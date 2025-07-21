@@ -11,7 +11,7 @@ set(COMPILED_NAME "testClient")
 
 # ✅ 使用 Boost 的 config 模式查找 Boost.Asio 和 Boost.System
 find_package(Boost REQUIRED CONFIG COMPONENTS asio system)
-
+find_package(nlohmann_json CONFIG REQUIRED)
 # ✅ 打印调试信息（可选）
 message(STATUS "Boost_INCLUDE_DIRS = ${Boost_INCLUDE_DIRS}")
 message(STATUS "Boost_LIBRARIES    = ${Boost_LIBRARIES}")
