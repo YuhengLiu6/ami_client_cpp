@@ -11,6 +11,9 @@
 #include <mutex>
 #include <condition_variable>
 #include <map>
+#include <variant>
+#include "AmiTypes.hpp"
+
 
 class RawAmiClientListener;
 
@@ -44,27 +47,31 @@ private:
     void fireDisconnect();
     void fireMessageReceived(long ts, long seq, int status, const std::string& msg);
     void fireMessageSent(const std::string& msg);
+	void fireOnLogin();
     void fireCommand(const std::string& requestId,
         const std::string& cmd,
         const std::string& userName,
         const std::string& objectType,
         const std::string& objectId,
-        const std::map<std::string, std::string>& params);
+        const std::map<std::string, AmiValue>& params);
 
-    void parseIncomingParams(const std::string& str, size_t pos, std::map<std::string, std::string>& out);
+    void parseIncomingParams(const std::string& str, size_t pos, std::map<std::string, AmiValue>& out);
     bool readUntilSkipEscaped(const std::string& input, size_t& pos, char endChar, std::string& out);
 
     std::string processIncoming(const std::string& line);
 
+    long resetSeqNum(long seqnum);
     // 新增：启动后台 reader thread
     void startReader();
 
+    std::mutex seqnumMutex_;
     boost::asio::io_context ioCtx_;
     std::unique_ptr<boost::asio::ip::tcp::socket> socket_;
     std::thread readerThread_;
     std::atomic<bool> connected_;
     std::atomic<bool> receiving_;
     std::atomic<bool> sending_;
+    std::atomic<bool> loggedIn_;
 
     std::mutex listenersMutex_;
     std::vector<std::shared_ptr<RawAmiClientListener>> listeners_;
