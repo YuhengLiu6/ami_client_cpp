@@ -28,9 +28,19 @@ public:
                 //    R"(O|I="test3"|T="rawclient"|name="jack"|number=3)";
                 //client->sendMessage(cmd2, /*autoFlush=*/true);
 
-                  const std::string cmd3 =
-                    R"(D|I="test3"|T="rawclient")";
-                client->sendMessage(cmd3, /*autoFlush=*/true);
+                //  const std::string cmd3 =
+                //    R"(D|I="test3"|T="rawclient")";
+                //client->sendMessage(cmd3, /*autoFlush=*/true);
+
+
+
+                client->startMessage('O', false, false)
+                    .addMessageParamString("I", "test_chain")
+                    .addMessageParamString("T", "rawclient")
+                    .addMessageParamString("name", "superman")
+                    .addMessageParamInt("number", 1)
+                    //.sendMessageAndFlush();
+                    .sendMessage();
                 }).detach();  
         }
         catch (const std::exception& ex) {

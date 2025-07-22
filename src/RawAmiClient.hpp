@@ -13,6 +13,8 @@
 #include <map>
 #include <variant>
 #include "AmiTypes.hpp"
+#include <any>            // for std::any
+#include <unordered_map>
 
 
 class RawAmiClientListener;
@@ -42,6 +44,32 @@ public:
     bool isConnected() const;
     long getNow() const;
 
+
+    RawAmiClient& startMessage(char type, bool includeSeqNum, bool includeNow);
+    RawAmiClient& sendMessage();
+    RawAmiClient& sendMessageAndFlush();
+    RawAmiClient& addMessageParamNull(const std::string& key);
+    RawAmiClient& addMessageParamString(const std::string& key, char value);
+    RawAmiClient& addMessageParamString(const std::string& key, const std::string& value);
+    RawAmiClient& addMessageParamString(const std::string& key, const std::string& value, size_t start, size_t end);
+    RawAmiClient& addMessageParamEnum(const std::string& key, const std::string& value);
+    RawAmiClient& addMessageParamEnum(const std::string& key, const std::string& value, size_t start, size_t end);
+    RawAmiClient& addMessageParamEnum(const std::string& key, const std::vector<char>& value);
+    RawAmiClient& addMessageParamJson(const std::string& key, const std::string& jsonStr);
+    RawAmiClient& addMessageParamBinary(const std::string& key, const std::vector<uint8_t>& value);
+    RawAmiClient& addMessageParamBinary(const std::string& key, const std::vector<uint8_t>& value, size_t start, size_t end);
+    RawAmiClient& addMessageParamLong(const std::string& key, long value);
+    RawAmiClient& addMessageParamInt(const std::string& key, int value);
+    RawAmiClient& addMessageParamDouble(const std::string& key, double value);
+    RawAmiClient& addMessageParamFloat(const std::string& key, float value);
+    RawAmiClient& addMessageParamDoubleEncoded(const std::string& key, double value);
+    RawAmiClient& addMessageParamFloatEncoded(const std::string& key, float value);
+    RawAmiClient& addMessageParamBoolean(const std::string& key, bool value);
+    void addMessageParams(const std::unordered_map<std::string, std::any>& params);
+    void addMessageParamObject(const std::string& key, const std::any& value);
+
+    RawAmiClient& RawAmiClient::flush(bool clearAfterSend);
+
 private:
     void fireConnect();
     void fireDisconnect();
@@ -64,6 +92,16 @@ private:
     // 新增：启动后台 reader thread
     void startReader();
 
+
+ 
+    void assertConnected() const;
+    void assertInMessage() const;
+	void resetMessage();
+
+    std::string outBuffer_;
+    std::atomic<bool> isInSend_;
+
+
     std::mutex seqnumMutex_;
     boost::asio::io_context ioCtx_;
     std::unique_ptr<boost::asio::ip::tcp::socket> socket_;
@@ -72,6 +110,8 @@ private:
     std::atomic<bool> receiving_;
     std::atomic<bool> sending_;
     std::atomic<bool> loggedIn_;
+    std::atomic<bool> needsFlush_;
+
 
     std::mutex listenersMutex_;
     std::vector<std::shared_ptr<RawAmiClientListener>> listeners_;

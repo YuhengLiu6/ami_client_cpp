@@ -15,6 +15,12 @@
 #include <stdexcept>
 #include <memory>
 
+
+#include <iomanip>  // for std::setprecision
+#include <bitset>
+
+
+
 #include <nlohmann/json.hpp> 
 #include <boost/beast/core/detail/base64.hpp>
 #include <cppcodec/base64_rfc4648.hpp>
@@ -403,12 +409,65 @@ bool RawAmiClient::pumpIncomingEvent() {
 
 
 
-bool RawAmiClient::sendMessage(const std::string& msg, bool /*flush*/) {
-    if (!connected_) throw std::runtime_error("Not connected");
-    boost::asio::write(*socket_, boost::asio::buffer(msg + "\n"));
-    fireMessageSent(msg);
+bool RawAmiClient::sendMessage(const std::string& msg, bool flush) {
+    assertConnected();
+    if (flush == true) {
+        boost::asio::write(*socket_, boost::asio::buffer(msg + "\n"));
+        fireMessageSent(msg);
+    }
+    else {
+		outBuffer_ += msg + "\n";
+    }
+    
     return true;
 }
+
+
+RawAmiClient& RawAmiClient::flush(bool clearAfterSend) {
+    outBuffer_ += '\n';
+
+    try {
+        boost::asio::write(*socket_, boost::asio::buffer(outBuffer_));
+        fireMessageSent(outBuffer_);
+
+        needsFlush_ = false;
+
+        if (clearAfterSend) {
+            outBuffer_.clear();
+        }
+    }
+    catch (const std::exception& e) {
+        std::cerr << "[flush error] " << e.what() << std::endl;
+        disconnect();
+    }
+
+    return *this;
+}
+
+
+RawAmiClient& RawAmiClient::sendMessage() {
+    assertConnected();
+    bool expected = true;
+    if (!isInSend_.compare_exchange_strong(expected, false))
+        throw std::runtime_error("Not in object send");
+
+    needsFlush_ = true;
+    return flush(false); // 不清空 outBuffer_
+}
+
+
+RawAmiClient& RawAmiClient::sendMessageAndFlush() {
+    assertConnected();
+    bool expected = true;
+    if (!isInSend_.compare_exchange_strong(expected, false))
+        throw std::runtime_error("Not in object send");
+
+    return flush(true); // 发送后清空缓冲
+}
+
+
+
+
 
 void RawAmiClient::addListener(std::shared_ptr<RawAmiClientListener> listener) {
     std::lock_guard<std::mutex> lock(listenersMutex_);
@@ -472,4 +531,264 @@ long RawAmiClient::resetSeqNum(long seqnum) {
     long old = seqnum_;
     seqnum_ = seqnum;
     return old;
+}
+
+
+
+//construct msg
+void RawAmiClient::resetMessage() {
+    assertConnected();
+    isInSend_ = false;
+    outBuffer_.clear();
+}
+
+void RawAmiClient::assertConnected() const {
+    if (!connected_) throw std::runtime_error("not connected");
+}
+
+void RawAmiClient::assertInMessage() const {
+    if (!isInSend_) throw std::runtime_error("not in object send, call startMessage(...) first");
+}
+
+RawAmiClient& RawAmiClient::startMessage(char type, bool includeSeqNum, bool includeNow) {
+    assertConnected();
+
+    bool expected = false;
+    if (!isInSend_.compare_exchange_strong(expected, true))
+        throw std::runtime_error("Already in object send");
+
+    outBuffer_.clear();
+    outBuffer_ += type;
+    if (includeSeqNum)
+        outBuffer_ += "#" + std::to_string(seqnum_++);
+    if (includeNow)
+        outBuffer_ += "@" + std::to_string(getNow());
+
+    return *this;
+}
+
+
+RawAmiClient& RawAmiClient::addMessageParamNull(const std::string& key) {
+    assertInMessage();
+    outBuffer_ += "|" + key + "=null";
+    return *this;
+}
+
+RawAmiClient& RawAmiClient::addMessageParamString(const std::string& key, char value) {
+    assertInMessage();
+    outBuffer_ += "|" + key + "=\"";
+    if (value == '"') outBuffer_ += "\\\"";
+    else outBuffer_ += value;
+    outBuffer_ += "\"";
+    return *this;
+}
+
+RawAmiClient& RawAmiClient::addMessageParamString(const std::string& key, const std::string& value) {
+    assertInMessage();
+    outBuffer_ += "|" + key + "=\"";
+    for (char c : value) {
+        if (c == '\\' || c == '"') outBuffer_ += '\\';
+        outBuffer_ += c;
+    }
+    outBuffer_ += "\"";
+    return *this;
+}
+
+RawAmiClient& RawAmiClient::addMessageParamString(const std::string& key, const std::string& value, size_t start, size_t end) {
+    return addMessageParamString(key, value.substr(start, end - start));
+}
+
+RawAmiClient& RawAmiClient::addMessageParamEnum(const std::string& key, const std::string& value) {
+    assertInMessage();
+    outBuffer_ += "|" + key + "='";
+    for (char c : value) {
+        if (c == '\\' || c == '\'') outBuffer_ += '\\';
+        outBuffer_ += c;
+    }
+    outBuffer_ += "'";
+    return *this;
+}
+
+RawAmiClient& RawAmiClient::addMessageParamEnum(const std::string& key, const std::string& value, size_t start, size_t end) {
+    return addMessageParamEnum(key, value.substr(start, end - start));
+}
+
+RawAmiClient& RawAmiClient::addMessageParamEnum(const std::string& key, const std::vector<char>& value) {
+    assertInMessage();
+    outBuffer_ += "|" + key + "='";
+    for (char c : value) {
+        if (c == '\\' || c == '\'') outBuffer_ += '\\';
+        outBuffer_ += c;
+    }
+    outBuffer_ += "'";
+    return *this;
+}
+
+RawAmiClient& RawAmiClient::addMessageParamJson(const std::string& key, const std::string& jsonStr) {
+    assertInMessage();
+    outBuffer_ += "|" + key + "=\"";
+    for (char c : jsonStr) {
+        if (c == '\\' || c == '"') outBuffer_ += '\\';
+        outBuffer_ += c;
+    }
+    outBuffer_ += "\"J";
+    return *this;
+}
+
+RawAmiClient& RawAmiClient::addMessageParamBinary(const std::string& key, const std::vector<uint8_t>& value) {
+    return addMessageParamBinary(key, value, 0, value.size());
+}
+
+RawAmiClient& RawAmiClient::addMessageParamBinary(const std::string& key, const std::vector<uint8_t>& value, size_t start, size_t end) {
+    assertInMessage();
+    outBuffer_ += "|" + key + "=\"";
+    static const char* base64_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    for (size_t i = start; i < end; i += 3) {
+        int val = (value[i] << 16) + ((i + 1 < end ? value[i + 1] : 0) << 8) + (i + 2 < end ? value[i + 2] : 0);
+        outBuffer_ += base64_chars[(val >> 18) & 0x3F];
+        outBuffer_ += base64_chars[(val >> 12) & 0x3F];
+        outBuffer_ += (i + 1 < end) ? base64_chars[(val >> 6) & 0x3F] : '=';
+        outBuffer_ += (i + 2 < end) ? base64_chars[val & 0x3F] : '=';
+    }
+    outBuffer_ += "\"U";
+    return *this;
+}
+
+RawAmiClient& RawAmiClient::addMessageParamLong(const std::string& key, long value) {
+    assertInMessage();
+    outBuffer_ += "|" + key + "=" + std::to_string(value) + "L";
+    return *this;
+}
+
+RawAmiClient& RawAmiClient::addMessageParamInt(const std::string& key, int value) {
+    assertInMessage();
+    outBuffer_ += "|" + key + "=" + std::to_string(value);
+    return *this;
+}
+
+RawAmiClient& RawAmiClient::addMessageParamDouble(const std::string& key, double value) {
+    assertInMessage();
+    std::ostringstream oss;
+    oss << std::setprecision(16) << value;
+    outBuffer_ += "|" + key + "=" + oss.str() + "D";
+    return *this;
+}
+
+RawAmiClient& RawAmiClient::addMessageParamFloat(const std::string& key, float value) {
+    assertInMessage();
+    std::ostringstream oss;
+    oss << std::setprecision(8) << value;
+    outBuffer_ += "|" + key + "=" + oss.str();
+    return *this;
+}
+
+RawAmiClient& RawAmiClient::addMessageParamDoubleEncoded(const std::string& key, double value) {
+    assertInMessage();
+    union {
+        double d;
+        uint64_t bits;
+    } u;
+    u.d = value;
+    outBuffer_ += "|" + key + "=D" + std::to_string(u.bits);  // 可以替换为 Base64 编码
+    return *this;
+}
+
+RawAmiClient& RawAmiClient::addMessageParamFloatEncoded(const std::string& key, float value) {
+    assertInMessage();
+    union {
+        float f;
+        uint32_t bits;
+    } u;
+    u.f = value;
+    outBuffer_ += "|" + key + "=F" + std::to_string(u.bits);  // 可以替换为 Base64 编码
+    return *this;
+}
+
+RawAmiClient& RawAmiClient::addMessageParamBoolean(const std::string& key, bool value) {
+    assertInMessage();
+    outBuffer_ += "|" + key + "=" + std::string(value ? "true" : "false");
+    return *this;
+}
+
+
+void RawAmiClient::addMessageParams(const std::unordered_map<std::string, std::any>& params) {
+    for (const auto& [key, value] : params) {
+        addMessageParamObject(key, value);
+    }
+}
+
+void RawAmiClient::addMessageParamObject(const std::string& key, const std::any& value) {
+    if (!value.has_value()) {
+        addMessageParamNull(key);
+        return;
+    }
+
+    try {
+        // === Strings and Chars ===
+        if (value.type() == typeid(std::string)) {
+            addMessageParamString(key, std::any_cast<std::string>(value));
+        }
+        else if (value.type() == typeid(const char*)) {
+            addMessageParamString(key, std::string(std::any_cast<const char*>(value)));
+        }
+        else if (value.type() == typeid(char)) {
+            addMessageParamEnum(key, std::string(1, std::any_cast<char>(value)));
+        }
+
+        // === Integer family ===
+        else if (value.type() == typeid(int)) {
+            addMessageParamInt(key, std::any_cast<int>(value));
+        }
+        else if (value.type() == typeid(long)) {
+            addMessageParamLong(key, std::any_cast<long>(value));
+        }
+        else if (value.type() == typeid(short)) {
+            addMessageParamInt(key, std::any_cast<short>(value));
+        }
+        else if (value.type() == typeid(uint8_t)) {
+            addMessageParamInt(key, std::any_cast<uint8_t>(value));
+        }
+        else if (value.type() == typeid(int8_t)) {
+            addMessageParamInt(key, std::any_cast<int8_t>(value));
+        }
+
+        // === Floating point family ===
+        else if (value.type() == typeid(float)) {
+            addMessageParamFloat(key, std::any_cast<float>(value));
+        }
+        else if (value.type() == typeid(double)) {
+            addMessageParamDouble(key, std::any_cast<double>(value));
+        }
+
+        // === Boolean ===
+        else if (value.type() == typeid(bool)) {
+            addMessageParamBoolean(key, std::any_cast<bool>(value));
+        }
+
+        // === Binary (byte[]) ===
+        else if (value.type() == typeid(std::vector<uint8_t>)) {
+            addMessageParamBinary(key, std::any_cast<std::vector<uint8_t>>(value));
+        }
+        else if (value.type() == typeid(std::vector<char>)) {
+            const auto& vec = std::any_cast<std::vector<char>>(value);
+            addMessageParamBinary(key, std::vector<uint8_t>(vec.begin(), vec.end()));
+        }
+
+        // === UUID, Complex, etc. as string ===
+        else if (value.type() == typeid(std::shared_ptr<std::stringstream>)) {
+            auto ss = std::any_cast<std::shared_ptr<std::stringstream>>(value);
+            addMessageParamString(key, ss->str());
+        }
+        else if (value.type() == typeid(std::string_view)) {
+            addMessageParamString(key, std::string(std::any_cast<std::string_view>(value)));
+        }
+
+        // === Fallback ===
+        else {
+            throw std::runtime_error("Unsupported type in addMessageParamObject for key: " + key);
+        }
+    }
+    catch (const std::bad_any_cast& e) {
+        throw std::runtime_error("Bad cast for key: " + key + " -> " + e.what());
+    }
 }
