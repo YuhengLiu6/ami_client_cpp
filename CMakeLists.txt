@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # ✅ 显式设置 Boost 的路径（如果不使用 CMAKE_TOOLCHAIN_FILE）
 set(CMAKE_PREFIX_PATH "C:/Users/YuhengLiu/vcpkg/installed/x64-windows")
-set(COMPILED_NAME "testClient")
+set(COMPILED_NAME "testMsg")
 
 # ✅ 使用 Boost 的 config 模式查找 Boost.Asio 和 Boost.System
 find_package(Boost REQUIRED CONFIG COMPONENTS asio system)
@@ -17,10 +17,10 @@ message(STATUS "Boost_INCLUDE_DIRS = ${Boost_INCLUDE_DIRS}")
 message(STATUS "Boost_LIBRARIES    = ${Boost_LIBRARIES}")
 
 # ✅ 自动收集源文件
-file(GLOB_RECURSE SOURCES "src/*.cpp" "test/TestRawAmiClient.cpp")
+file(GLOB_RECURSE SOURCES "src/*.cpp" "test/TestMsgType.cpp")
 
 # ✅ 生成可执行文件
-add_executable(${COMPILED_NAME} ${SOURCES} "src/RawAmiClient.cpp")
+add_executable(${COMPILED_NAME} ${SOURCES} "src/RawAmiClient.cpp" "test/TestMsgType.cpp")
 
 # ✅ 链接 Boost 组件
 target_link_libraries(${COMPILED_NAME} PRIVATE Boost::asio Boost::system)

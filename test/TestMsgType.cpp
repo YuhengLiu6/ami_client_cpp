@@ -9,6 +9,7 @@
 #include <chrono>
 #include <iomanip>    // for std::setw
 #include <exception>
+extern std::mutex coutMutex;
 
 class MyListener : public RawAmiClientListener {
 public:
@@ -23,7 +24,7 @@ public:
                 //    R"(C|I="bst"|N="2nd Bust Every Order"|H="busts all orders"|L=2)";
                 //client->sendMessage(cmd1, /*autoFlush=*/true);
 
-          
+
                 //const std::string cmd2 =
                 //    R"(O|I="test3"|T="rawclient"|name="jack"|number=3)";
                 //client->sendMessage(cmd2, /*autoFlush=*/true);
@@ -33,28 +34,48 @@ public:
                 //client->sendMessage(cmd3, /*autoFlush=*/true);
 
 
-
+                client->startMessage('C', false, false)
+                    .addMessageParamString("I", "bst")
+                    .addMessageParamString("N", "2nd Bust Every Order")
+                    .addMessageParamString("H", "busts all orders")
+                    .addMessageParamInt("L", 2)
+                    .sendMessageAndFlush();
+                //std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                client->startMessage('O', false, false)
+                    .addMessageParamString("I", "test3")
+                    .addMessageParamString("T", "rawclient")
+                    .addMessageParamString("name", "jack")
+                    .addMessageParamInt("number", 3)
+                    .sendMessageAndFlush();
+                //std::this_thread::sleep_for(std::chrono::milliseconds(100));
+                client->startMessage('D', false, false)
+                    .addMessageParamString("I", "test3")
+                    .addMessageParamString("T", "rawclient")
+                    .sendMessageAndFlush();
+                //std::this_thread::sleep_for(std::chrono::milliseconds(10));
                 client->startMessage('O', false, true)
                     .addMessageParamString("I", "test_chain")
                     .addMessageParamString("T", "rawclient")
                     .addMessageParamString("name", "superman")
                     .addMessageParamInt("number", 1)
-                    //.sendMessageAndFlush();
-                    .sendMessage();
-                }).detach();  
+                    .sendMessageAndFlush();
+                    //.sendMessage();
+                }).detach();
         }
         catch (const std::exception& ex) {
             std::cerr << "[Exception@onLoggedIn] " << ex.what() << std::endl;
         }
     }
 
+
     void onConnect(RawAmiClient* client) override {
         try {
+            std::lock_guard lk(coutMutex);
             std::cout << "[Listener] Connected to server." << std::endl;
             std::thread([client]() {
                 std::this_thread::sleep_for(std::chrono::milliseconds(10));
                 client->sendMessage(R"(L|I="demo")", true);
-            
+
                 //client->sendMessage(R"(O|I="test1"|T="rawclient"|name="michael"|number=1)", true);
 
                 }).detach();
@@ -83,16 +104,17 @@ public:
             auto tp = std::chrono::system_clock::time_point{ std::chrono::milliseconds(ts) };
             std::time_t tt = std::chrono::system_clock::to_time_t(tp);
             std::tm local_tm;
-            #ifdef _WIN32
+#ifdef _WIN32
             localtime_s(&local_tm, &tt);
-            #else
+#else
             localtime_r(&tt, &local_tm);
-            #endif
+#endif
 
             std::ostringstream timeBuf;
             timeBuf << std::put_time(&local_tm, "%Y-%m-%d %H:%M:%S");
 
             // 2. 基本信息
+            std::lock_guard lk(coutMutex);
             std::cout << "[Listener] MessageReceived\n"
                 << "  Timestamp: " << timeBuf.str()
                 << "  (ms since epoch: " << ts << ")\n"
@@ -137,7 +159,10 @@ public:
 
     void onMessageSent(RawAmiClient* client, const std::string& message) override {
         try {
+            
+            std::lock_guard lk(coutMutex);
             std::cout << "[Listener] MessageSent: \"" << message << "\"" << std::endl;
+            
         }
         catch (const std::exception& ex) {
             std::cerr << "[Exception@onMessageSent] " << ex.what() << std::endl;
@@ -190,7 +215,7 @@ public:
         }
     }
 
-    
+
 };
 
 int main(int argc, char* argv[]) {
@@ -210,7 +235,7 @@ int main(int argc, char* argv[]) {
             std::cerr << "[Main] Failed to connect." << std::endl;
             return 1;
         }
-    
+
         //std::cout << "This is cuurent connected_:  " << client->isConnected() << " before while loop" << std::endl;
         while (client->isConnected()) {
             //std::cout << "This is cuurent connected_:  " << client->isConnected() << " inside loop" << std::endl;

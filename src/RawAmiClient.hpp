@@ -15,8 +15,10 @@
 #include "AmiTypes.hpp"
 #include <any>            // for std::any
 #include <unordered_map>
-
-
+namespace {
+    std::mutex g_logMutex;
+}
+extern std::mutex coutMutex;
 class RawAmiClientListener;
 
 class RawAmiClient {
@@ -111,6 +113,15 @@ private:
     std::atomic<bool> sending_;
     std::atomic<bool> loggedIn_;
     std::atomic<bool> needsFlush_;
+    // ==============================================
+    std::thread              autoFlushThread_;
+    std::atomic<bool>        stopAutoFlush_{ false };
+    long                     autoFlushIntervalMs_{ 2 };    // 毫秒
+    // 条件等待 & 锁，用于唤醒后台线程
+    std::mutex               flushMutex_;
+    std::condition_variable  flushCv_;
+
+    void autoFlushLoop();
 
 
     std::mutex listenersMutex_;
@@ -118,8 +129,9 @@ private:
 
     long seqnum_;
     bool autoFlush_;
-    std::condition_variable flushCv_;
-    std::mutex flushMutex_;
+
+    std::mutex writeMutex_;
+
 };
 
 #endif // RAW_AMI_CLIENT_HPP

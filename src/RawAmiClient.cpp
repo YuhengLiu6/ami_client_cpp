@@ -25,6 +25,10 @@
 #include <boost/beast/core/detail/base64.hpp>
 #include <cppcodec/base64_rfc4648.hpp>
 #include "AmiTypes.hpp"
+
+using namespace std::chrono;
+std::mutex coutMutex;
+
 const std::string RawAmiClient::DEFAULT_HOST = "localhost";
 const int RawAmiClient::DEFAULT_PORT = 3289;
 using base64 = cppcodec::base64_rfc4648;
@@ -53,39 +57,73 @@ bool RawAmiClient::connect(const std::string& host,
         auto endpoints = resolver.resolve(host, std::to_string(port));
         socket_ = std::make_unique<boost::asio::ip::tcp::socket>(ioCtx_);
         boost::asio::connect(*socket_, endpoints);
+
+        {
+            std::lock_guard lk(coutMutex);
+            std::cout << "[connect] Connected to " << host << ":" << port << std::endl;
+        }
+
         connected_ = true;
         autoFlush_ = autoFlush;
         startReader();
         fireConnect();
-        
+
+        if (autoFlush_) {
+            stopAutoFlush_ = false;
+            needsFlush_ = false;
+            autoFlushThread_ = std::thread(&RawAmiClient::autoFlushLoop, this);
+        }
         return true;
     }
     catch (const std::exception& e) {
-        std::cerr << "Connect error: " << e.what() << std::endl;
+        std::lock_guard lk(coutMutex);
+        std::cerr << "[connect error] " << e.what() << std::endl;
         return false;
     }
 }
 
+
 void RawAmiClient::disconnect() {
     if (!connected_) return;
+
+    {
+        std::lock_guard lk(coutMutex);
+        std::cout << "[disconnect] Shutting down..." << std::endl;
+    }
+
+    // 通知线程退出
     connected_ = false;
-    loggedIn_ = false;
+    stopAutoFlush_ = true;
+    flushCv_.notify_all();
+
+    // 关闭 socket 以唤醒 read_until
     if (socket_) {
         boost::system::error_code ec;
         socket_->shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
         socket_->close(ec);
     }
+
+    // join 两条后台线程
+    if (readerThread_.joinable())     readerThread_.join();
+    if (autoFlushThread_.joinable())  autoFlushThread_.join();
+
+    loggedIn_ = false;
     fireDisconnect();
+
+    {
+        std::lock_guard lk(coutMutex);
+        std::cout << "[disconnect] Done." << std::endl;
+    }
 }
+
 
 bool RawAmiClient::isConnected() const {
     return connected_;
 }
 
 long RawAmiClient::getNow() const {
-    return std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::system_clock::now().time_since_epoch())
-        .count();
+    return duration_cast<milliseconds>(
+        system_clock::now().time_since_epoch()).count();
 }
 
 
@@ -94,45 +132,41 @@ void RawAmiClient::startReader() {
         boost::asio::streambuf buf;
         while (connected_) {
             try {
-                // 1) 读取到 '\n'（或已有 '\n'）并返回这次操作读入 buffer 的字节数
-                std::size_t bytes = boost::asio::read_until(*socket_, buf, '\n');
-
-                // 2) 用一个新的 std::istream （或在这里每次重建）去提取一行
+                auto n = boost::asio::read_until(*socket_, buf, '\n');
                 std::istream is(&buf);
                 std::string line;
                 std::getline(is, line);
+                buf.consume(n);
 
-                // 3) 把这次已经处理过的 bytes 从 buf 里丢掉
-                buf.consume(bytes);
-
-                // ---- 可选：去掉行首行尾所有空白 ----
+                // trim
                 while (!line.empty() && std::isspace((unsigned char)line.back()))
                     line.pop_back();
-                size_t start = 0;
-                while (start < line.size() && std::isspace((unsigned char)line[start]))
-                    ++start;
-                if (start) line.erase(0, start);
+                size_t st = 0;
+                while (st < line.size() && std::isspace((unsigned char)line[st]))
+                    ++st;
+                if (st) line.erase(0, st);
 
-                // 4) 再交给 processIncoming
+                if (line.empty())
+                    continue;
+
                 auto err = processIncoming(line);
-                if (!err.empty()) {
-                    std::cerr << "[startReader] Fatal error: " << err
-                        << "  原始行: '" << line << "'" << std::endl;
-                    break;
+                {
+                    std::lock_guard lk(coutMutex);
+                    if (err.empty())
+                        std::cout << "[reader] OK: " << line << std::endl;
+                    else
+                        std::cerr << "[reader] ERR: " << err << std::endl;
                 }
-                else {
-                    std::cout << "[startReader] Processed incoming line ok" << std::endl;
-                }
+                if (!err.empty()) break;
             }
-            catch (...) {
+            catch (const std::exception& e) {
+                std::lock_guard lk(coutMutex);
+                std::cerr << "[reader] Exception: " << e.what() << std::endl;
                 break;
             }
         }
-        disconnect();
         });
-    readerThread_.detach();
 }
-
 
 void RawAmiClient::parseIncomingParams(
     const std::string& str, size_t pos,
@@ -234,16 +268,16 @@ void RawAmiClient::parseIncomingParams(
 
 std::string RawAmiClient::processIncoming(const std::string& line) {
     if (line.find("Welcome to 3forge AMI") != std::string::npos ||
-                line.find("logged in") != std::string::npos ||
-                line.find("|Q=0|S=0|") != std::string::npos) {
-                fireOnLogin();  // ✅ 合适触发点
-            }
+        line.find("logged in") != std::string::npos ||
+        line.find("|Q=0|S=0|") != std::string::npos) {
+        fireOnLogin();  // ✅ 合适触发点
+    }
 
     std::string s = line;
     //if (!s.empty() && s.back() == '\r') s.pop_back();
-     while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back()))) s.pop_back();
-
-    std::cout << "[DEBUG] Incoming type: '" << s[0] << "' | Raw: " << s << std::endl;
+    while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back()))) s.pop_back();
+    
+    //std::cout << "[DEBUG] Incoming type: '" << s[0] << "' | Raw: " << s << std::endl;
 
     if (s.size() < 3 || s[1] != '@') return "Invalid header";
 
@@ -260,12 +294,12 @@ std::string RawAmiClient::processIncoming(const std::string& line) {
 
     size_t pos = pipe1 + 1;
 
-    
+
 
     try {
         switch (s[0]) {
         case 'M': {
-           
+
             // 解析 MQ=..., S=..., M="..."
             auto require = [&](char expected, const char* msg) {
                 if (pos >= s.size() || s[pos] != expected)
@@ -297,18 +331,14 @@ std::string RawAmiClient::processIncoming(const std::string& line) {
                 std::cout << "[DEBUG] readUntilSkipEscaped Failed! " << msg << std::endl;
                 return "Malformed message string";
             }
-            /*while (pos < s.size() && (s[pos] == '\r' || s[pos] == '\n' || s[pos] == ' '))
-                ++pos;*/
+       
 
             while (pos < s.size() && std::isspace(static_cast<unsigned char>(s[pos])))
                 ++pos;
 
-            std::cout << "[DEBUG] Will call fireMessageReceived(...) with msg before return: " << msg << std::endl;
-            /*if (pos != s.size()) return "Trailing garbage after message";*/
-            std::cout << "[DEBUG] Will call fireMessageReceived(...) with msg after return: " << msg << std::endl;
             fireMessageReceived(ts, seqNum, status, msg);
 
-          
+
 
             break;
         }
@@ -411,36 +441,65 @@ bool RawAmiClient::pumpIncomingEvent() {
 
 bool RawAmiClient::sendMessage(const std::string& msg, bool flush) {
     assertConnected();
-    if (flush == true) {
-        boost::asio::write(*socket_, boost::asio::buffer(msg + "\n"));
-        fireMessageSent(msg);
+
+    std::lock_guard writeLock(writeMutex_);
+    // buffered or immediate?
+    if (!flush) {
+        outBuffer_ += msg;
+        if (outBuffer_.empty() || outBuffer_.back() != '\n')
+            outBuffer_ += '\n';
+        std::lock_guard lk(coutMutex);
+        std::cout << "[sendMessage] buffered: " << msg << std::endl;
+        return true;
     }
-    else {
-		outBuffer_ += msg + "\n";
+
+    // immediate write
+    std::string toWrite = msg;
+    if (toWrite.empty() || toWrite.back() != '\n')
+        toWrite += '\n';
+    boost::asio::write(*socket_, boost::asio::buffer(toWrite));
+    fireMessageSent(toWrite);
+    {
+        std::lock_guard lk(coutMutex);
+        std::cout << "[sendMessage] flushed: " << msg << std::endl;
     }
-    
     return true;
 }
 
 
+
 RawAmiClient& RawAmiClient::flush(bool clearAfterSend) {
-    outBuffer_ += '\n';
+    assertConnected();
 
-    try {
-        boost::asio::write(*socket_, boost::asio::buffer(outBuffer_));
-        fireMessageSent(outBuffer_);
-
-        needsFlush_ = false;
-
-        if (clearAfterSend) {
-            outBuffer_.clear();
+    if (!autoFlush_) {
+        // swap buffer
+        std::string buf;
+        {
+            std::lock_guard lk(writeMutex_);
+            buf.swap(outBuffer_);
         }
+        if (buf.empty() || buf.back() != '\n')
+            buf += '\n';
+
+        boost::asio::write(*socket_, boost::asio::buffer(buf));
+        fireMessageSent(buf);
+        {
+            std::lock_guard lk(coutMutex);
+            std::cout << "[flush] wrote: " << buf << std::endl;
+        }
+        needsFlush_ = false;
     }
-    catch (const std::exception& e) {
-        std::cerr << "[flush error] " << e.what() << std::endl;
-        disconnect();
+    else {
+        // auto-flush 模式不变
+        std::unique_lock lk(flushMutex_);
+        needsFlush_ = true;
+        flushCv_.notify_one();
     }
 
+    if (clearAfterSend) {
+        std::lock_guard lk(writeMutex_);
+        outBuffer_.clear();
+    }
     return *this;
 }
 
@@ -461,10 +520,39 @@ RawAmiClient& RawAmiClient::sendMessageAndFlush() {
     bool expected = true;
     if (!isInSend_.compare_exchange_strong(expected, false))
         throw std::runtime_error("Not in object send");
-
+    needsFlush_ = true;
     return flush(true); // 发送后清空缓冲
 }
 
+void RawAmiClient::autoFlushLoop() {
+    std::unique_lock lk(flushMutex_);
+    while (!stopAutoFlush_) {
+        flushCv_.wait(lk, [&]() {
+            return needsFlush_.load() || stopAutoFlush_.load();
+            });
+        if (stopAutoFlush_) break;
+
+        // swap + 写
+        std::string buf;
+        {
+            std::lock_guard wl(writeMutex_);
+            buf.swap(outBuffer_);
+            needsFlush_ = false;
+        }
+        if (buf.empty() || buf.back() != '\n')
+            buf += '\n';
+
+        try {
+            boost::asio::write(*socket_, boost::asio::buffer(buf));
+            fireMessageSent(buf);
+        }
+        catch (...) {
+            disconnect();
+            return;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(autoFlushIntervalMs_));
+    }
+}
 
 
 
