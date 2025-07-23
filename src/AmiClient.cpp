@@ -134,30 +134,51 @@ bool AmiClient::removeListener(std::shared_ptr<AmiClientListener> listener) {
 
 // RawAmiClientListener overrides: forward to high-level listeners
 void AmiClient::onConnect(RawAmiClient* /*source*/) {
-    std::lock_guard<std::mutex> lk(listenerMutex_);
-    for (auto& l : listeners_) l->onConnect(this);
+    std::vector<std::shared_ptr<AmiClientListener>> tmp;
+    {
+        std::lock_guard<std::mutex> lk(listenerMutex_);
+        tmp = listeners_;
+        }
+    for (auto& l : tmp) l->onConnect(this);
+    
 }
 void AmiClient::onDisconnect(RawAmiClient* /*source*/) {
-    std::lock_guard<std::mutex> lk(listenerMutex_);
-    for (auto& l : listeners_) l->onDisconnect(this);
+    std::vector<std::shared_ptr<AmiClientListener>> tmp;
+    {
+        std::lock_guard<std::mutex> lk(listenerMutex_);
+        tmp = listeners_;
+    }
+    for (auto& l : tmp) l->onDisconnect(this);
 }
 void AmiClient::onLoggedIn(RawAmiClient* /*source*/) {
-    std::lock_guard<std::mutex> lk(listenerMutex_);
-    for (auto& l : listeners_) l->onLoggedIn(this);
+    std::vector<std::shared_ptr<AmiClientListener>> tmp;
+    {
+        std::lock_guard<std::mutex> lk(listenerMutex_);
+        tmp = listeners_;
+    }
+    for (auto& l : tmp) l->onLoggedIn(this);
 }
 void AmiClient::onMessageReceived(RawAmiClient* /*src*/,
     long long ts,
     long seq,
     int status,
     const std::string& msg) {
-    std::lock_guard<std::mutex> lk(listenerMutex_);
-    for (auto& l : listeners_)
+    std::vector<std::shared_ptr<AmiClientListener>> tmp;
+    {
+        std::lock_guard<std::mutex> lk(listenerMutex_);
+        tmp = listeners_;
+    }
+    for (auto& l : tmp)
         l->onMessageReceived(this, ts, seq, status, msg);
 }
 void AmiClient::onMessageSent(RawAmiClient* /*src*/,
     const std::string& msg) {
-    std::lock_guard<std::mutex> lk(listenerMutex_);
-    for (auto& l : listeners_)
+    std::vector<std::shared_ptr<AmiClientListener>> tmp;
+    {
+        std::lock_guard<std::mutex> lk(listenerMutex_);
+        tmp = listeners_;
+    }
+    for (auto& l : tmp)
         l->onMessageSent(this, msg);
 }
 void AmiClient::onCommand(RawAmiClient* /*src*/,
@@ -167,8 +188,12 @@ void AmiClient::onCommand(RawAmiClient* /*src*/,
     const std::string& type,
     const std::string& id,
     const std::map<std::string, AmiValue>& params) {
-    std::lock_guard<std::mutex> lk(listenerMutex_);
-    for (auto& l : listeners_)
+    std::vector<std::shared_ptr<AmiClientListener>> tmp;
+    {
+        std::lock_guard<std::mutex> lk(listenerMutex_);
+        tmp = listeners_;
+    }
+    for (auto& l : tmp)
         l->onCommand(this, req, cmd, user, type, id, params);
 }
 

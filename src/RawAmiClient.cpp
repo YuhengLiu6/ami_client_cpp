@@ -29,6 +29,17 @@
 using namespace std::chrono;
 std::mutex coutMutex;
 
+template<typename Method, typename... Args>
+void RawAmiClient::notifyListeners(Method method, Args&&... args) {
+    std::vector<std::shared_ptr<RawAmiClientListener>> tmp;
+    {
+        std::lock_guard<std::mutex> lock(listenersMutex_);
+        tmp = listeners_;
+    }
+    for (auto& l : tmp) {
+        (l.get()->*method)(std::forward<Args>(args)...);
+    }
+}
 
 
 const std::string RawAmiClient::DEFAULT_HOST = "localhost";
@@ -665,59 +676,31 @@ bool RawAmiClient::removeListener(std::shared_ptr<RawAmiClientListener> listener
 
 
 
-template<typename F, typename... Args>
-void RawAmiClient::notifyListeners(F fn, Args&&... args) {
-    std::vector<std::shared_ptr<RawAmiClientListener>> tmp;
-    {
-        std::lock_guard<std::mutex> lock(listenersMutex_);
-        tmp = listeners_;
-    }
-    for (auto& l : tmp) {
-        (l.get()->*fn)(std::forward<Args>(args)...);
-    }
-}
+
 
 
 
 void RawAmiClient::fireConnect() {
-    std::lock_guard<std::mutex> lock(listenersMutex_);
-    for (auto& l : listeners_) l->onConnect(this);
+    notifyListeners(&RawAmiClientListener::onConnect, this);
 }
 
 void RawAmiClient::fireDisconnect() {
-    std::lock_guard<std::mutex> lock(listenersMutex_);
-    for (auto& l : listeners_) l->onDisconnect(this);
-}
-
-void RawAmiClient::fireMessageReceived(long long ts, long seq, int status, const std::string& msg) {
-    std::lock_guard<std::mutex> lock(listenersMutex_);
-    for (auto& l : listeners_) l->onMessageReceived(this, ts, seq, status, msg);
-}
-
-void RawAmiClient::fireMessageSent(const std::string& msg) {
-    std::lock_guard<std::mutex> lock(listenersMutex_);
-    for (auto& l : listeners_) l->onMessageSent(this, msg);
+    notifyListeners(&RawAmiClientListener::onDisconnect, this);
 }
 
 void RawAmiClient::fireOnLogin() {
-    if (loggedIn_.exchange(true)) return;  // 已经登录则直接返回
-
-    std::lock_guard<std::mutex> lock(listenersMutex_);
-    for (auto& listener : listeners_) {
-        if (listener) listener->onLoggedIn(this);
-    }
+    if (loggedIn_.exchange(true)) return;  // 保证只触发一次
+    notifyListeners(&RawAmiClientListener::onLoggedIn, this);
 }
 
-//void RawAmiClient::fireCommand(const std::string& requestId,
-//    const std::string& cmd,
-//    const std::string& userName,
-//    const std::string& objectType,
-//    const std::string& objectId,
-//    const std::map<std::string, AmiValue>& params) {
-//    std::lock_guard<std::mutex> lock(listenersMutex_);
-//    for (auto& l : listeners_)
-//        l->onCommand(this, requestId, cmd, userName, objectType, objectId, params);
-//}
+void RawAmiClient::fireMessageReceived(long long ts, long seq, int status, const std::string& msg) {
+    notifyListeners(&RawAmiClientListener::onMessageReceived,
+        this, ts, seq, status, msg);
+}
+
+void RawAmiClient::fireMessageSent(const std::string& msg) {
+    notifyListeners(&RawAmiClientListener::onMessageSent, this, msg);
+}
 
 void RawAmiClient::fireCommand(const std::string& requestId,
     const std::string& cmd,
@@ -725,10 +708,8 @@ void RawAmiClient::fireCommand(const std::string& requestId,
     const std::string& objectType,
     const std::string& objectId,
     const std::map<std::string, AmiValue>& params) {
-    std::cout << "[fireCommand] RequestId: " << requestId;
     notifyListeners(&RawAmiClientListener::onCommand,
         this, requestId, cmd, userName, objectType, objectId, params);
-    std::cout << "[fireCommand] Ntified: " << requestId;
 }
 
 
