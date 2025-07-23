@@ -35,8 +35,7 @@ public:
         bool autoFlush = false);
     void disconnect();
 
-    // 保留，内部线程不需要外部调用，可简化
-    bool pumpIncomingEvent();
+
 
     bool sendMessage(const std::string& msg, bool flush = false);
 
@@ -78,10 +77,12 @@ public:
     long getAutoFlushBufferMillis() const;
     void setAutoFlushBufferMillis(long millis);
 
+    bool pumpIncomingEvent();
+
 private:
     void fireConnect();
     void fireDisconnect();
-    void fireMessageReceived(long ts, long seq, int status, const std::string& msg);
+    void fireMessageReceived(long long ts, long seq, int status, const std::string& msg);
     void fireMessageSent(const std::string& msg);
 	void fireOnLogin();
     void fireCommand(const std::string& requestId,
@@ -100,12 +101,15 @@ private:
     // 新增：启动后台 reader thread
     void startReader();
 
-
+    template<typename F, typename... Args>
+    void notifyListeners(F fn, Args&&... args);
  
     void assertConnected() const;
     void assertInMessage() const;
 	void resetMessage();
 
+    std::string inBuffer_;     
+    std::atomic<bool> isInReceive_{ false };
     std::string outBuffer_;
     std::atomic<bool> isInSend_;
 

@@ -29,6 +29,8 @@
 using namespace std::chrono;
 std::mutex coutMutex;
 
+
+
 const std::string RawAmiClient::DEFAULT_HOST = "localhost";
 const int RawAmiClient::DEFAULT_PORT = 3289;
 using base64 = cppcodec::base64_rfc4648;
@@ -294,7 +296,7 @@ std::string RawAmiClient::processIncoming(const std::string& line) {
 
     size_t pos = pipe1 + 1;
 
-
+    std::cout << "[processIncoming]: Get inside" << std::endl;
 
     try {
         switch (s[0]) {
@@ -344,6 +346,7 @@ std::string RawAmiClient::processIncoming(const std::string& line) {
         }
 
         case 'E': {
+            
             std::map<std::string, AmiValue> params;
             parseIncomingParams(s, pos, params);
 
@@ -360,17 +363,16 @@ std::string RawAmiClient::processIncoming(const std::string& line) {
             std::string type = getStr("T"); params.erase("T");
             std::string objectId = getStr("O"); params.erase("O");
 
+   /*         std::cout << "[Processing E Command] "
+                << "RequestId: " << requestId
+                << ", User: " << userName
+                << ", Cmd: " << cmd
+                << ", Type: " << type
+                << ", ObjectId: " << objectId << std::endl;*/
+            std::cout << "[Processing E Command]: try to fire ecommand" << std::endl;
             fireCommand(requestId, cmd, userName, type, objectId, params);
             break;
         }
-
-                // 如果是 ack 或 ping 也可以处理（根据 AMI 文档）
-        //case 'X':
-        //case 'P': {
-        //    // 可以处理 heartbeat/ping/ack（可选）
-        //    std::cout << "[DEBUG] Heartbeat or ack received." << std::endl;
-        //    break;
-        //}
 
         default:
             std::cout << "[DEBUG] Unknown message type '" << s[0] << "', forwarding raw message.\n";
@@ -430,11 +432,87 @@ bool RawAmiClient::readUntilSkipEscaped(const std::string& input, size_t& pos, c
 
 
 
-bool RawAmiClient::pumpIncomingEvent() {
-    // 留空或返回 connected_
-    return connected_;
-}
+//bool RawAmiClient::pumpIncomingEvent() {
+//    // 留空或返回 connected_
+//    return connected_;
+//}
 
+bool RawAmiClient::pumpIncomingEvent() {
+    // 1) 防止并发调用
+    bool expected = false;
+    if (!isInReceive_.compare_exchange_strong(expected, true)) {
+        throw std::runtime_error("Already in pump for receive");
+    }
+
+    // 2) 确保退出前重置标志
+    struct ResetFlag { std::atomic<bool>& f; ~ResetFlag() { f.store(false); } };
+    ResetFlag _reset{ isInReceive_ };
+
+    // 3) 清空缓冲区，开始读字节
+    inBuffer_.clear();
+    try {
+        while (connected_) {
+            char c;
+            boost::system::error_code ec;
+
+            // 阻塞读一个字节
+            boost::asio::read(*socket_,
+                boost::asio::buffer(&c, 1),
+                ec);
+
+            if (ec) {
+                // EOF 或 其它错误
+                if (ec == boost::asio::error::eof) {
+                    if (!inBuffer_.empty()) {
+                        std::lock_guard<std::mutex> lk(coutMutex);
+                        std::cerr << "[warning] Trailing text: " << inBuffer_ << "\n";
+                    }
+                    return false;
+                }
+                // 其它 I/O 错误
+                std::lock_guard<std::mutex> lk(coutMutex);
+                std::cerr << "[warning] Read error: " << ec.message() << "\n";
+                disconnect();
+                return false;
+            }
+
+            switch (c) {
+            case '\n': {
+                // 一行结束，交给 processIncoming 处理
+                std::string err = processIncoming(inBuffer_);
+                if (!err.empty()) {
+                    std::lock_guard<std::mutex> lk(coutMutex);
+                    std::cerr << "[warning] General error: "
+                        << err
+                        << " for string '" << inBuffer_ << "'\n";
+                }
+                return true;
+            }
+            case '\r':
+                // 忽略回车
+                continue;
+            default:
+                // 累积到缓冲区
+                inBuffer_.push_back(c);
+            }
+        }
+
+        // 如果连接关闭但缓冲区还有残余
+        if (!inBuffer_.empty()) {
+            std::lock_guard<std::mutex> lk(coutMutex);
+            std::cerr << "[warning] Trailing text: " << inBuffer_ << "\n";
+        }
+        return false;
+    }
+    catch (const std::exception& ex) {
+        // 捕获意外异常
+        std::lock_guard<std::mutex> lk(coutMutex);
+        std::cerr << "[warning] Exception in pumpIncomingEvent: "
+            << ex.what() << "\n";
+        disconnect();
+        return false;
+    }
+}
 
 
 
@@ -470,8 +548,21 @@ bool RawAmiClient::sendMessage(const std::string& msg, bool flush) {
 
 RawAmiClient& RawAmiClient::flush(bool clearAfterSend) {
     assertConnected();
-
-    if (!autoFlush_) {
+    if (clearAfterSend) {
+        // 不论 autoFlush_，都立即写
+        std::string buf;
+        {
+            std::lock_guard lk(writeMutex_);
+            buf.swap(outBuffer_);
+        }
+        if (buf.empty() || buf.back() != '\n') buf += '\n';
+        boost::asio::write(*socket_, boost::asio::buffer(buf));
+        fireMessageSent(buf);
+        needsFlush_ = false;
+        isInSend_ = false;
+        return *this;
+    }
+    else if (!autoFlush_) {
         // swap buffer
         std::string buf;
         {
@@ -572,6 +663,22 @@ bool RawAmiClient::removeListener(std::shared_ptr<RawAmiClientListener> listener
     return false;
 }
 
+
+
+template<typename F, typename... Args>
+void RawAmiClient::notifyListeners(F fn, Args&&... args) {
+    std::vector<std::shared_ptr<RawAmiClientListener>> tmp;
+    {
+        std::lock_guard<std::mutex> lock(listenersMutex_);
+        tmp = listeners_;
+    }
+    for (auto& l : tmp) {
+        (l.get()->*fn)(std::forward<Args>(args)...);
+    }
+}
+
+
+
 void RawAmiClient::fireConnect() {
     std::lock_guard<std::mutex> lock(listenersMutex_);
     for (auto& l : listeners_) l->onConnect(this);
@@ -582,7 +689,7 @@ void RawAmiClient::fireDisconnect() {
     for (auto& l : listeners_) l->onDisconnect(this);
 }
 
-void RawAmiClient::fireMessageReceived(long ts, long seq, int status, const std::string& msg) {
+void RawAmiClient::fireMessageReceived(long long ts, long seq, int status, const std::string& msg) {
     std::lock_guard<std::mutex> lock(listenersMutex_);
     for (auto& l : listeners_) l->onMessageReceived(this, ts, seq, status, msg);
 }
@@ -601,15 +708,27 @@ void RawAmiClient::fireOnLogin() {
     }
 }
 
+//void RawAmiClient::fireCommand(const std::string& requestId,
+//    const std::string& cmd,
+//    const std::string& userName,
+//    const std::string& objectType,
+//    const std::string& objectId,
+//    const std::map<std::string, AmiValue>& params) {
+//    std::lock_guard<std::mutex> lock(listenersMutex_);
+//    for (auto& l : listeners_)
+//        l->onCommand(this, requestId, cmd, userName, objectType, objectId, params);
+//}
+
 void RawAmiClient::fireCommand(const std::string& requestId,
     const std::string& cmd,
     const std::string& userName,
     const std::string& objectType,
     const std::string& objectId,
     const std::map<std::string, AmiValue>& params) {
-    std::lock_guard<std::mutex> lock(listenersMutex_);
-    for (auto& l : listeners_)
-        l->onCommand(this, requestId, cmd, userName, objectType, objectId, params);
+    std::cout << "[fireCommand] RequestId: " << requestId;
+    notifyListeners(&RawAmiClientListener::onCommand,
+        this, requestId, cmd, userName, objectType, objectId, params);
+    std::cout << "[fireCommand] Ntified: " << requestId;
 }
 
 

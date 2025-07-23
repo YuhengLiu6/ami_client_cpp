@@ -1,0 +1,193 @@
+// AmiClient.cpp
+#include "AmiClient.hpp"
+#include <algorithm>
+
+
+AmiClient::AmiClient()
+    : autoFlush_(false) {
+    // Constructor implementation
+}
+
+AmiClient::~AmiClient() {
+    // Destructor implementation
+}
+
+bool AmiClient::start(const std::string& host,
+    int port,
+    const std::string& loginId,
+    bool autoFlush) {
+    loginId_ = loginId;
+    autoFlush_ = autoFlush;
+    if (!rawClient_.connect(host, port, /*logError*/ false, autoFlush_))
+        return false;
+    sendLogin_();
+    return true;
+}
+
+void AmiClient::close() {
+    rawClient_.disconnect();
+}
+
+bool AmiClient::isConnected() const {
+    return rawClient_.isConnected();
+}
+
+void AmiClient::sendLogin_() {
+    rawClient_.startMessage('L', /*includeSeqNum=*/false, /*includeNow=*/false)
+        .addMessageParamString("I", loginId_);
+    rawClient_.sendMessageAndFlush();
+}
+
+// Fluent message API
+AmiClient& AmiClient::startStatusMessage() {
+    rawClient_.startMessage('S', false, false);
+    return *this;
+}
+AmiClient& AmiClient::startObjectMessage(const std::string& type,
+    const std::string& id,
+    long expiresOn) {
+    rawClient_.startMessage('O', false, false)
+        .addMessageParamString("T", type);
+    if (!id.empty()) rawClient_.addMessageParamString("I", id);
+    if (expiresOn)  rawClient_.addMessageParamLong("E", expiresOn);
+    return *this;
+}
+AmiClient& AmiClient::startResponseMessage(const std::string& requestId,
+    int status,
+    const std::string& msg) {
+    rawClient_.startMessage('R', false, false)
+        .addMessageParamString("I", requestId)
+        .addMessageParamInt("S", status);
+    if (!msg.empty()) rawClient_.addMessageParamString("M", msg);
+    return *this;
+}
+AmiClient& AmiClient::startCommandDefinition(const std::string& id) {
+    rawClient_.startMessage('C', false, false)
+        .addMessageParamString("I", id);
+    return *this;
+}
+AmiClient& AmiClient::startDeleteMessage(const std::string& type,
+    const std::string& id) {
+    rawClient_.startMessage('D', false, false)
+        .addMessageParamString("T", type)
+        .addMessageParamString("I", id);
+    return *this;
+}
+
+AmiClient& AmiClient::addMessageParamNull(const std::string& key) {
+    rawClient_.addMessageParamNull(key);
+    return *this;
+}
+AmiClient& AmiClient::addMessageParamString(const std::string& key,
+    const std::string& value) {
+    rawClient_.addMessageParamString(key, value);
+    return *this;
+}
+AmiClient& AmiClient::addMessageParamInt(const std::string& key,
+    int value) {
+    rawClient_.addMessageParamInt(key, value);
+    return *this;
+}
+AmiClient& AmiClient::addMessageParamLong(const std::string& key,
+    long value) {
+    rawClient_.addMessageParamLong(key, value);
+    return *this;
+}
+AmiClient& AmiClient::addMessageParamDouble(const std::string& key,
+    double value) {
+    rawClient_.addMessageParamDouble(key, value);
+    return *this;
+}
+AmiClient& AmiClient::addMessageParamBoolean(const std::string& key,
+    bool value) {
+    rawClient_.addMessageParamBoolean(key, value);
+    return *this;
+}
+
+AmiClient& AmiClient::sendMessage() {
+    rawClient_.sendMessage();
+    return *this;
+}
+AmiClient& AmiClient::sendMessageAndFlush() {
+    rawClient_.sendMessageAndFlush();
+    return *this;
+}
+AmiClient& AmiClient::flush(bool clearAfterSend) {
+    rawClient_.flush(clearAfterSend);
+    return *this;
+}
+
+// Listener management
+void AmiClient::addListener(std::shared_ptr<AmiClientListener> listener) {
+    std::lock_guard<std::mutex> lk(listenerMutex_);
+    listeners_.push_back(listener);
+}
+bool AmiClient::removeListener(std::shared_ptr<AmiClientListener> listener) {
+    std::lock_guard<std::mutex> lk(listenerMutex_);
+    auto it = std::find(listeners_.begin(), listeners_.end(), listener);
+    if (it != listeners_.end()) {
+        listeners_.erase(it);
+        return true;
+    }
+    return false;
+}
+
+// RawAmiClientListener overrides: forward to high-level listeners
+void AmiClient::onConnect(RawAmiClient* /*source*/) {
+    std::lock_guard<std::mutex> lk(listenerMutex_);
+    for (auto& l : listeners_) l->onConnect(this);
+}
+void AmiClient::onDisconnect(RawAmiClient* /*source*/) {
+    std::lock_guard<std::mutex> lk(listenerMutex_);
+    for (auto& l : listeners_) l->onDisconnect(this);
+}
+void AmiClient::onLoggedIn(RawAmiClient* /*source*/) {
+    std::lock_guard<std::mutex> lk(listenerMutex_);
+    for (auto& l : listeners_) l->onLoggedIn(this);
+}
+void AmiClient::onMessageReceived(RawAmiClient* /*src*/,
+    long long ts,
+    long seq,
+    int status,
+    const std::string& msg) {
+    std::lock_guard<std::mutex> lk(listenerMutex_);
+    for (auto& l : listeners_)
+        l->onMessageReceived(this, ts, seq, status, msg);
+}
+void AmiClient::onMessageSent(RawAmiClient* /*src*/,
+    const std::string& msg) {
+    std::lock_guard<std::mutex> lk(listenerMutex_);
+    for (auto& l : listeners_)
+        l->onMessageSent(this, msg);
+}
+void AmiClient::onCommand(RawAmiClient* /*src*/,
+    const std::string& req,
+    const std::string& cmd,
+    const std::string& user,
+    const std::string& type,
+    const std::string& id,
+    const std::map<std::string, AmiValue>& params) {
+    std::lock_guard<std::mutex> lk(listenerMutex_);
+    for (auto& l : listeners_)
+        l->onCommand(this, req, cmd, user, type, id, params);
+}
+
+
+
+AmiClient& AmiClient::sendCommandDefinition(const AmiClientCommandDef& def) {
+    startCommandDefinition(def.getCommandId());
+    if (auto v = def.getName())            addMessageParamString("N", *v);
+    if (auto v = def.getArgumentsJson())   addMessageParamString("A", *v);
+    if (auto v = def.getWhereClause())     addMessageParamString("W", *v);
+    if (auto v = def.getHelp())            addMessageParamString("H", *v);
+    if (auto v = def.getEnabledExpression()) addMessageParamString("E", *v);
+    if (auto v = def.getFields())          addMessageParamString("F", *v);
+    if (auto v = def.getFilterClause())    addMessageParamString("T", *v);
+    if (auto v = def.getSelectMode())      addMessageParamString("M", *v);
+    if (auto v = def.getStyle())           addMessageParamString("S", *v);
+    if (auto v = def.getConditions())      addMessageParamString("C", *v);
+    if (auto v = def.getLevel())           addMessageParamInt("L", *v);
+    if (auto v = def.getPriority())        addMessageParamInt("P", *v);
+    sendMessageAndFlush();
+    return *this;
+}
