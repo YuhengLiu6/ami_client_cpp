@@ -880,3 +880,17 @@ void RawAmiClient::addMessageParamObject(const std::string& key, const std::any&
         throw std::runtime_error("Bad cast for key: " + key + " -> " + e.what());
     }
 }
+
+
+
+const std::string& RawAmiClient::getOutputBuffer() const {
+    return outBuffer_;
+}
+
+long RawAmiClient::getAutoFlushBufferMillis() const {
+    return autoFlushIntervalMs_;
+}
+
+void RawAmiClient::setAutoFlushBufferMillis(long millis) {
+    autoFlushIntervalMs_ = millis;
+}

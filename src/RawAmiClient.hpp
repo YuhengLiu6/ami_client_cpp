@@ -72,6 +72,12 @@ public:
 
     RawAmiClient& RawAmiClient::flush(bool clearAfterSend);
 
+    const std::string& getOutputBuffer() const;
+
+
+    long getAutoFlushBufferMillis() const;
+    void setAutoFlushBufferMillis(long millis);
+
 private:
     void fireConnect();
     void fireDisconnect();
