@@ -141,7 +141,7 @@ private:
     bool autoFlush_;
 
     std::mutex writeMutex_;
-
+    friend class AmiClient;
 };
 
 #endif // RAW_AMI_CLIENT_HPP

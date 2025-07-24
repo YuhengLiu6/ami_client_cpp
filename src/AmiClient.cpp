@@ -1,4 +1,4 @@
-// AmiClient.cpp
+﻿// AmiClient.cpp
 #include "AmiClient.hpp"
 #include <algorithm>
 
@@ -21,6 +21,8 @@ bool AmiClient::start(const std::string& host,
     if (!rawClient_.connect(host, port, /*logError*/ false, autoFlush_))
         return false;
     sendLogin_();
+    rawClient_.fireOnLogin();    
+    rawClient_.startReader();
     return true;
 }
 

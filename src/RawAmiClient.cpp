@@ -78,7 +78,7 @@ bool RawAmiClient::connect(const std::string& host,
 
         connected_ = true;
         autoFlush_ = autoFlush;
-        startReader();
+        //startReader();
         fireConnect();
 
         if (autoFlush_) {
@@ -148,33 +148,6 @@ void RawAmiClient::startReader() {
                 auto n = boost::asio::read_until(*socket_, buf, '\n');
                 std::istream is(&buf);
                 std::string line;
-                //std::getline(is, line);
-                //buf.consume(n);
-
-                //// trim
-                //while (!line.empty() && std::isspace((unsigned char)line.back()))
-                //    line.pop_back();
-                //size_t st = 0;
-                //while (st < line.size() && std::isspace((unsigned char)line[st]))
-                //    ++st;
-                //if (st) line.erase(0, st);
-
-                //if (line.empty())
-                //    continue;
-
-                //auto err = processIncoming(line);
-                //{
-                //    std::lock_guard lk(coutMutex);
-                //    if (err.empty())
-                //        std::cout << "[reader] OK: " << line << std::endl;
-                //    else
-                //        std::cerr << "[reader] ERR: " << err << std::endl;
-                //}
-                //if (!err.empty()) {
-                //    std::lock_guard lk(coutMutex);
-                //    std::cerr << "[reader] WARN: " << err << "  line='" << line << "'" << std::endl;
-                //    continue;    // 忽略这一行，继续下一次 read
-                //}
 
                 while (std::getline(is, line)) {
                     // 去掉换行符残留

@@ -14,7 +14,7 @@ extern std::mutex coutMutex;
 class MyAmiListener : public AmiClientListener {
 public:
     void onConnect(AmiClient* client) override {
-        std::lock_guard<std::mutex> lk(coutMutex);
+        //std::lock_guard<std::mutex> lk(coutMutex);
         std::cout << "[Listener] Connected to server." << std::endl;
         // 登录已在 start() 内完成，可在此发送第一条业务消息
         /*std::thread([client]() {
@@ -39,29 +39,33 @@ public:
                 
 
             }).detach();*/
-
-        std::thread([client]() {
-            int counter = 0;
-            while (counter<20) {
-                // 构造一个不断变换 ID 和 name 的对象消息
-                client
-                    ->startObjectMessage("demoType", "demoId" + std::to_string(counter))
-                    .addMessageParamString("name", "Bob_" + std::to_string(counter))
-                    .addMessageParamInt("age", 20 + (counter % 10))
-                    .sendMessageAndFlush();
-
-                // 每隔 1 秒发一条
-                //std::this_thread::sleep_for(std::chrono::milliseconds(10));
-                ++counter;
-            }
-            }).detach();
-
-        
     }
 
+
     void onLoggedIn(AmiClient* client) override {
-        std::lock_guard<std::mutex> lk(coutMutex);
+
         std::cout << "[Listener] Logged in successfully." << std::endl;
+        int counter = 0;
+        while (counter < 20) {
+            // 构造一个不断变换 ID 和 name 的对象消息
+            client
+                ->startObjectMessage("demoType", "demoId" + std::to_string(counter))
+                .addMessageParamString("name", "Bob_" + std::to_string(counter))
+                .addMessageParamInt("age", 20 + (counter % 10))
+                .sendMessageAndFlush();
+
+            // 每隔 1 秒发一条
+            //std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            ++counter;
+        }
+
+        AmiClientCommandDef def("sample_cmd_def");
+        def.setConditions({ AmiClientCommandDef::CONDITION_USER_CLICK })
+            .setName("ClickCommand")
+            .setHelp("Triggers on user click")
+            .setPriority(5);
+
+        client->sendCommandDefinition(def);
     }
 
     void onDisconnect(AmiClient* client) override {
@@ -84,7 +88,7 @@ public:
     void onMessageSent(AmiClient* client,
         const std::string& message) override {
         std::lock_guard<std::mutex> lk(coutMutex);
-        std::cout << "[Listener] MessageSent: \"" << message << "\"" << std::endl;
+        std::cout << "[Listener] MessageSent:" << message << std::endl;
     }
 
     void MyAmiListener::onCommand(AmiClient* source,
@@ -95,6 +99,7 @@ public:
         const std::string& objectId,
         const std::map<std::string, AmiValue>& params)
     {
+        std::cout << "[Listener] Command received:" << std::endl;
         // 1. 简要日志
       /*  {
             std::lock_guard<std::mutex> lk(coutMutex);
@@ -120,7 +125,7 @@ int main(int argc, char* argv[]) {
     std::string host = AmiClient::DEFAULT_HOST;
     int port = AmiClient::DEFAULT_PORT;
     std::string loginId = "demo";
-    bool autoFlush = true;
+    bool autoFlush = false;
 
     if (argc > 1) host = argv[1];
     if (argc > 2) port = std::stoi(argv[2]);
