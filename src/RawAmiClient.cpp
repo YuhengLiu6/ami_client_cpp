@@ -148,29 +148,56 @@ void RawAmiClient::startReader() {
                 auto n = boost::asio::read_until(*socket_, buf, '\n');
                 std::istream is(&buf);
                 std::string line;
-                std::getline(is, line);
-                buf.consume(n);
+                //std::getline(is, line);
+                //buf.consume(n);
 
-                // trim
-                while (!line.empty() && std::isspace((unsigned char)line.back()))
-                    line.pop_back();
-                size_t st = 0;
-                while (st < line.size() && std::isspace((unsigned char)line[st]))
-                    ++st;
-                if (st) line.erase(0, st);
+                //// trim
+                //while (!line.empty() && std::isspace((unsigned char)line.back()))
+                //    line.pop_back();
+                //size_t st = 0;
+                //while (st < line.size() && std::isspace((unsigned char)line[st]))
+                //    ++st;
+                //if (st) line.erase(0, st);
 
-                if (line.empty())
-                    continue;
+                //if (line.empty())
+                //    continue;
 
-                auto err = processIncoming(line);
-                {
-                    std::lock_guard lk(coutMutex);
-                    if (err.empty())
-                        std::cout << "[reader] OK: " << line << std::endl;
-                    else
-                        std::cerr << "[reader] ERR: " << err << std::endl;
+                //auto err = processIncoming(line);
+                //{
+                //    std::lock_guard lk(coutMutex);
+                //    if (err.empty())
+                //        std::cout << "[reader] OK: " << line << std::endl;
+                //    else
+                //        std::cerr << "[reader] ERR: " << err << std::endl;
+                //}
+                //if (!err.empty()) {
+                //    std::lock_guard lk(coutMutex);
+                //    std::cerr << "[reader] WARN: " << err << "  line='" << line << "'" << std::endl;
+                //    continue;    // 忽略这一行，继续下一次 read
+                //}
+
+                while (std::getline(is, line)) {
+                    // 去掉换行符残留
+                    if (!line.empty() && line.back() == '\r')
+                        line.pop_back();
+
+                    // 去除首尾空格
+                    size_t st = 0;
+                    while (st < line.size() && std::isspace((unsigned char)line[st])) ++st;
+                    while (!line.empty() && std::isspace((unsigned char)line.back())) line.pop_back();
+                    if (st) line.erase(0, st);
+
+                    if (line.empty()) continue;
+
+                    auto err = processIncoming(line);
+                    {
+                        std::lock_guard lk(coutMutex);
+                        /*if (err.empty())
+                            std::cout << "[reader] OK: " << line << std::endl;
+                        else
+                            std::cerr << "[reader] WARN: " << err << "  line='" << line << "'" << std::endl;*/
+                    }
                 }
-                if (!err.empty()) break;
             }
             catch (const std::exception& e) {
                 std::lock_guard lk(coutMutex);
@@ -307,7 +334,28 @@ std::string RawAmiClient::processIncoming(const std::string& line) {
 
     size_t pos = pipe1 + 1;
 
-    std::cout << "[processIncoming]: Get inside" << std::endl;
+    //long long ts = 0;
+    //size_t pos = 0;
+
+    //if (s.size() > 1 && s[1] == '@') {
+    //    auto pipe1 = s.find('|', 2);
+    //    if (pipe1 == std::string::npos) return "Missing | after timestamp";
+    //    try {
+    //        ts = std::stoll(s.substr(2, pipe1 - 2));
+    //    }
+    //    catch (...) {
+    //        return "Invalid timestamp";
+    //    }
+    //    pos = pipe1 + 1;
+    //}
+    //else {
+    //    // 没有 timestamp，就直接把 pos 设到第一个 '|'
+    //    auto pipe0 = s.find('|', 1);
+    //    if (pipe0 == std::string::npos) return "Missing | after header";
+    //    pos = pipe0 + 1;
+    //}
+
+    //std::cout << "[processIncoming]: Get inside" << std::endl;
 
     try {
         switch (s[0]) {

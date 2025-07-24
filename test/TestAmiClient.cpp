@@ -17,16 +17,16 @@ public:
         std::lock_guard<std::mutex> lk(coutMutex);
         std::cout << "[Listener] Connected to server." << std::endl;
         // 登录已在 start() 内完成，可在此发送第一条业务消息
-        std::thread([client]() {
+        /*std::thread([client]() {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
-            /*client->
+            client->
                 startObjectMessage("demoType", "demoId2")
                 .addMessageParamString("name", "Bob")
                 .addMessageParamInt("age", 29)
                 .sendMessageAndFlush()
                 .startCommandDefinition("demoCommand")
                 .addMessageParamString("description", "This is a demo command")
-                .sendMessageAndFlush();*/
+                .sendMessageAndFlush();
 
             AmiClientCommandDef def("sample_cmd_def");
             def.setConditions({ AmiClientCommandDef::CONDITION_USER_CLICK })
@@ -38,6 +38,22 @@ public:
       
                 
 
+            }).detach();*/
+
+        std::thread([client]() {
+            int counter = 0;
+            while (counter<20) {
+                // 构造一个不断变换 ID 和 name 的对象消息
+                client
+                    ->startObjectMessage("demoType", "demoId" + std::to_string(counter))
+                    .addMessageParamString("name", "Bob_" + std::to_string(counter))
+                    .addMessageParamInt("age", 20 + (counter % 10))
+                    .sendMessageAndFlush();
+
+                // 每隔 1 秒发一条
+                //std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                ++counter;
+            }
             }).detach();
 
         
@@ -46,15 +62,6 @@ public:
     void onLoggedIn(AmiClient* client) override {
         std::lock_guard<std::mutex> lk(coutMutex);
         std::cout << "[Listener] Logged in successfully." << std::endl;
-        // 登录后发送一条对象创建示例
-        /*std::thread([client]() {
-            std::this_thread::sleep_for(std::chrono::milliseconds(50));
-            client->
-                startObjectMessage("demoType", "demoId")
-                .addMessageParamString("name", "Alice")
-                .addMessageParamInt("age", 30)
-                .sendMessageAndFlush();
-            }).detach();*/
     }
 
     void onDisconnect(AmiClient* client) override {
