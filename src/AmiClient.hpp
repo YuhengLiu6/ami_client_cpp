@@ -14,6 +14,19 @@
  */
 class AmiClient : public RawAmiClientListener, public std::enable_shared_from_this<AmiClient> {
 public:
+    // Option flags
+    static const int ENABLE_AUTO_PROCESS_INCOMING = 1 << 1;  // 2
+    static const int ENABLE_QUIET = 1 << 2;  // 4
+    static const int DISABLE_AUTO_RECONNECT = 1 << 3;  // 8
+    static const int ENABLE_SEND_TIMESTAMPS = 1 << 5;  // 32
+    static const int ENABLE_SEND_SEQNUM = 1 << 6;  // 64
+    static const int LOG_CONNECTION_RETRY_ERRORS = 1 << 7;  // 128
+    static const int LOG_MESSAGES = 1 << 8;  // 256
+    static const int ENABLE_AUTO_FLUSH_OUTGOING = 1 << 9;  // 512
+
+    void setOptions(int options);
+    int getOptions() const;
+
     static std::shared_ptr<AmiClient> create() {
         auto instance = std::shared_ptr<AmiClient>(new AmiClient());
         instance->initialize();
@@ -25,17 +38,9 @@ public:
 
     ~AmiClient() override;
 
-    /**
-     * Connects to AMI relay, logs in, and optionally enables auto-flush.
-     */
-    bool start(const std::string& host,
-        int port,
-        const std::string& loginId,
-        bool autoFlush = false);
 
-    /**
-     * Disconnects and stops client.
-     */
+    bool start(const std::string& host, int port, const std::string& loginId, int options);
+
     void close();
 
     // Fluent API for building and sending messages
@@ -106,4 +111,14 @@ private:
     bool autoFlush_;
 
     void sendLogin_();
+
+    // Options state
+    int   options_{ 0 };
+    bool  autoProcessIncoming_{ false };
+    bool  quietMode_{ false };
+    bool  autoReconnect_{ true };
+    bool  includeSeqNum_{ false };
+    bool  includeNow_{ false };
+    bool  logConnectionRetryErrors_{ false };
+    bool  logMessages_{ false };
 };

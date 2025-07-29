@@ -141,10 +141,15 @@ int main(int argc, char* argv[]) {
             << " with loginId=\"" << loginId << "\"..." << std::endl;
     }
 
-    if (!client->start(host, port, loginId, autoFlush)) {
+    int opts = AmiClient::ENABLE_AUTO_PROCESS_INCOMING;
+    
+
+    if (!client->start(host, port, loginId, opts)) {
         std::cerr << "[Main] Failed to start AmiClient." << std::endl;
         return 1;
     }
+
+    
 
     while (client->isConnected()) {
         std::this_thread::sleep_for(std::chrono::seconds(1));

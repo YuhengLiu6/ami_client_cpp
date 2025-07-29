@@ -15,14 +15,24 @@ AmiClient::~AmiClient() {
 bool AmiClient::start(const std::string& host,
     int port,
     const std::string& loginId,
-    bool autoFlush) {
+    int options) {
     loginId_ = loginId;
-    autoFlush_ = autoFlush;
-    if (!rawClient_.connect(host, port, /*logError*/ false, autoFlush_))
+    setOptions(options);
+
+    // Pass logConnectionRetryErrors_ and autoflush flag to RawAmiClient
+    bool autoFlush = (options & ENABLE_AUTO_FLUSH_OUTGOING) != 0;
+    if (!rawClient_.connect(host,
+        port,
+        logConnectionRetryErrors_,
+        autoFlush))
         return false;
+
     sendLogin_();
-    rawClient_.fireOnLogin();
-    rawClient_.startReader();
+
+    // If auto-process is enabled, spin up the reader thread
+    if (autoProcessIncoming_) {
+        rawClient_.startReader();
+    }
     return true;
 }
 
@@ -34,11 +44,36 @@ bool AmiClient::isConnected() const {
     return rawClient_.isConnected();
 }
 
+
 void AmiClient::sendLogin_() {
-    rawClient_.startMessage('L', /*includeSeqNum=*/false, /*includeNow=*/false)
-        .addMessageParamString("I", loginId_);
+    rawClient_.startMessage('L', includeSeqNum_, includeNow_);
+    rawClient_.addMessageParamString("I", loginId_);
+    if (quietMode_)
+        rawClient_.addMessageParamString("O", "QUIET");
     rawClient_.sendMessageAndFlush();
+    rawClient_.fireOnLogin();
 }
+
+
+
+void AmiClient::setOptions(int options) {
+    options_ = options;
+    autoProcessIncoming_ = (options & ENABLE_AUTO_PROCESS_INCOMING) != 0;
+    quietMode_ = (options & ENABLE_QUIET) != 0;
+    autoReconnect_ = (options & DISABLE_AUTO_RECONNECT) == 0;
+    includeSeqNum_ = (options & ENABLE_SEND_SEQNUM) != 0;
+    includeNow_ = (options & ENABLE_SEND_TIMESTAMPS) != 0;
+    logConnectionRetryErrors_ = (options & LOG_CONNECTION_RETRY_ERRORS) != 0;
+    logMessages_ = (options & LOG_MESSAGES) != 0;
+
+
+}
+
+int AmiClient::getOptions() const {
+    return options_;
+}
+
+
 
 // Fluent message API
 AmiClient& AmiClient::startStatusMessage() {
