@@ -473,85 +473,6 @@ bool RawAmiClient::readUntilSkipEscaped(const std::string& input, size_t& pos, c
 
 
 
-//bool RawAmiClient::pumpIncomingEvent() {
-//    // 1) 防止并发调用
-//    bool expected = false;
-//    if (!isInReceive_.compare_exchange_strong(expected, true)) {
-//        throw std::runtime_error("Already in pump for receive");
-//    }
-//
-//    // 2) 确保退出前重置标志
-//    struct ResetFlag { std::atomic<bool>& f; ~ResetFlag() { f.store(false); } };
-//    ResetFlag _reset{ isInReceive_ };
-//
-//    // 3) 清空缓冲区，开始读字节
-//    inBuffer_.clear();
-//    try {
-//        while (connected_) {
-//            char c;
-//            boost::system::error_code ec;
-//
-//            // 阻塞读一个字节
-//            boost::asio::read(*socket_,
-//                boost::asio::buffer(&c, 1),
-//                ec);
-//
-//            if (ec) {
-//                // EOF 或 其它错误
-//                if (ec == boost::asio::error::eof) {
-//                    if (!inBuffer_.empty()) {
-//                        std::lock_guard<std::mutex> lk(coutMutex);
-//                        std::cerr << "[warning] Trailing text: " << inBuffer_ << "\n";
-//                    }
-//                    return false;
-//                }
-//                // 其它 I/O 错误
-//                std::lock_guard<std::mutex> lk(coutMutex);
-//                std::cerr << "[warning] Read error: " << ec.message() << "\n";
-//                disconnect();
-//                return false;
-//            }
-//
-//            switch (c) {
-//            case '\n': {
-//                // 一行结束，交给 processIncoming 处理
-//                std::string err = processIncoming(inBuffer_);
-//                if (!err.empty()) {
-//                    std::lock_guard<std::mutex> lk(coutMutex);
-//                    std::cerr << "[warning] General error: "
-//                        << err
-//                        << " for string '" << inBuffer_ << "'\n";
-//                }
-//                return true;
-//            }
-//            case '\r':
-//                // 忽略回车
-//                continue;
-//            default:
-//                // 累积到缓冲区
-//                inBuffer_.push_back(c);
-//            }
-//        }
-//
-//        // 如果连接关闭但缓冲区还有残余
-//        if (!inBuffer_.empty()) {
-//            std::lock_guard<std::mutex> lk(coutMutex);
-//            std::cerr << "[warning] Trailing text: " << inBuffer_ << "\n";
-//        }
-//        return false;
-//    }
-//    catch (const std::exception& ex) {
-//        // 捕获意外异常
-//        std::lock_guard<std::mutex> lk(coutMutex);
-//        std::cerr << "[warning] Exception in pumpIncomingEvent: "
-//            << ex.what() << "\n";
-//        disconnect();
-//        return false;
-//    }
-//}
-//
-
-
 
 bool RawAmiClient::pumpIncomingEvent() {
     if (debug_) {
@@ -766,14 +687,48 @@ RawAmiClient& RawAmiClient::flush(bool clearAfterSend) {
 }
 
 
+//RawAmiClient& RawAmiClient::sendMessage() {
+//    assertConnected();
+//    bool expected = true;
+//    if (!isInSend_.compare_exchange_strong(expected, false))
+//        throw std::runtime_error("Not in object send");
+//
+//    needsFlush_ = true;
+//    return flush(false); // 不清空 outBuffer_
+//}
+
 RawAmiClient& RawAmiClient::sendMessage() {
     assertConnected();
+
+    // 切换状态，允许再次 startMessage
     bool expected = true;
     if (!isInSend_.compare_exchange_strong(expected, false))
         throw std::runtime_error("Not in object send");
 
-    needsFlush_ = true;
-    return flush(false); // 不清空 outBuffer_
+    // 追加本条消息
+    {
+        std::lock_guard<std::mutex> lk(writeMutex_);
+        batchBuffer_ += outBuffer_;
+        if (batchBuffer_.empty() || batchBuffer_.back() != '\n')
+            batchBuffer_ += '\n';
+    }
+
+    // 阈值模式：累积大小 ≥ 阈值时立即写出
+    if (autoFlush_ && autoFlushBufferSizeThreshold_ > 0) {
+        std::lock_guard<std::mutex> lk(writeMutex_);
+        if (batchBuffer_.size() >= autoFlushBufferSizeThreshold_) {
+            boost::asio::write(*socket_, boost::asio::buffer(batchBuffer_));
+            fireMessageSent(batchBuffer_);
+            batchBuffer_.clear();
+        }
+    }
+    else if (autoFlush_) {
+        // 定时模式：标记后通知 autoFlushLoop
+        needsFlush_ = true;
+        flushCv_.notify_one();
+    }
+
+    return *this;
 }
 
 
@@ -782,37 +737,57 @@ RawAmiClient& RawAmiClient::sendMessageAndFlush() {
     bool expected = true;
     if (!isInSend_.compare_exchange_strong(expected, false))
         throw std::runtime_error("Not in object send");
-    needsFlush_ = true;
-    return flush(true); // 发送后清空缓冲
+
+    // 先把本条消息追加
+    {
+        std::lock_guard<std::mutex> lk(writeMutex_);
+        batchBuffer_ += outBuffer_;
+        if (batchBuffer_.empty() || batchBuffer_.back() != '\n')
+            batchBuffer_ += '\n';
+    }
+
+    // 然后立即写并清空
+    {
+        std::lock_guard<std::mutex> lk(writeMutex_);
+        boost::asio::write(*socket_, boost::asio::buffer(batchBuffer_));
+        fireMessageSent(batchBuffer_);
+        batchBuffer_.clear();
+    }
+
+    return *this;
 }
 
 void RawAmiClient::autoFlushLoop() {
-    std::unique_lock lk(flushMutex_);
+    std::unique_lock<std::mutex> lk(flushMutex_);
     while (!stopAutoFlush_) {
-        flushCv_.wait(lk, [&]() {
-            return needsFlush_.load() || stopAutoFlush_.load();
-            });
+        if (autoFlushBufferSizeThreshold_ > 0) {
+            // 阈值模式：随 notify() 或 spurious wakeup 返回
+            flushCv_.wait(lk);
+        }
+        else {
+            // 定时模式：等待间隔
+            flushCv_.wait_for(lk, std::chrono::milliseconds(autoFlushIntervalMs_));
+        }
         if (stopAutoFlush_) break;
 
-        // swap + 写
-        std::string buf;
-        {
-            std::lock_guard wl(writeMutex_);
-            buf.swap(outBuffer_);
-            needsFlush_ = false;
+        // 定时模式下，检查 needsFlush_
+        if (autoFlushBufferSizeThreshold_ == 0 && needsFlush_) {
+            std::string buf;
+            {
+                std::lock_guard<std::mutex> wl(writeMutex_);
+                buf.swap(batchBuffer_);
+                needsFlush_ = false;
+            }
+            if (!buf.empty() && buf.back() != '\n') buf += '\n';
+            try {
+                boost::asio::write(*socket_, boost::asio::buffer(buf));
+                fireMessageSent(buf);
+            }
+            catch (...) {
+                disconnect();
+                return;
+            }
         }
-        if (buf.empty() || buf.back() != '\n')
-            buf += '\n';
-
-        try {
-            boost::asio::write(*socket_, boost::asio::buffer(buf));
-            fireMessageSent(buf);
-        }
-        catch (...) {
-            disconnect();
-            return;
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(autoFlushIntervalMs_));
     }
 }
 
@@ -1154,7 +1129,11 @@ long RawAmiClient::getAutoFlushBufferMillis() const {
 }
 
 void RawAmiClient::setAutoFlushBufferMillis(long millis) {
-    autoFlushIntervalMs_ = millis;
+    {
+        std::lock_guard<std::mutex> lk(flushMutex_);
+        autoFlushIntervalMs_ = millis;
+    }
+    flushCv_.notify_one();
 }
 
 
@@ -1164,5 +1143,9 @@ size_t RawAmiClient::getAutoFlushBufferSizeThreshold() const {
 }
 
 void RawAmiClient::setAutoFlushBufferSizeThreshold(size_t threshold) {
-    autoFlushBufferSizeThreshold_ = threshold;
+    {
+        std::lock_guard<std::mutex> lk(flushMutex_);
+        autoFlushBufferSizeThreshold_ = threshold;
+    }
+    flushCv_.notify_one();
 }

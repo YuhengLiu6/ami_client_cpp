@@ -55,6 +55,20 @@ void AmiClient::setAutoReconnectFrequencyMs(long ms) {
     autoReconnectFrequencyMs_ = ms;
 }
 
+size_t AmiClient::getAutoFlushBufferSizeThreshold() {
+	return rawClient_.getAutoFlushBufferSizeThreshold();
+}
+void AmiClient::setAutoFlushBufferSizeThreshold(size_t threshold){
+    rawClient_.setAutoFlushBufferSizeThreshold(threshold);
+}
+
+long AmiClient::getAutoFlushBufferMillis() const{
+	return rawClient_.getAutoFlushBufferMillis();
+}
+void AmiClient::setAutoFlushBufferMillis(long millis) {
+	rawClient_.setAutoFlushBufferMillis(millis);
+}
+
 void AmiClient::sendLogin_() {
     rawClient_.startMessage('L', includeSeqNum_, includeNow_);
     rawClient_.addMessageParamString("I", loginId_);
@@ -300,3 +314,7 @@ AmiClient& AmiClient::sendCommandDefinition(const AmiClientCommandDef& def) {
     sendMessageAndFlush();
     return *this;
 }
+
+
+
+

@@ -149,6 +149,9 @@ private:
     bool debug_{ false };
 
     size_t autoFlushBufferSizeThreshold_{ 0 };
+
+
+    std::string batchBuffer_;
 };
 
 #endif // RAW_AMI_CLIENT_HPP

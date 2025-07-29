@@ -106,6 +106,12 @@ public:
         const std::string& objectId,
         const std::map<std::string, AmiValue>& params) override;
 
+    size_t getAutoFlushBufferSizeThreshold();
+    void   setAutoFlushBufferSizeThreshold(size_t threshold);
+
+    long getAutoFlushBufferMillis() const;
+    void setAutoFlushBufferMillis(long millis);
+
 private:
     AmiClient(); // Declare the constructor only once
 
