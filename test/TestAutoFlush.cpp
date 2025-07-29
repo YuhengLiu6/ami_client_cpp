@@ -122,6 +122,7 @@ int main(int argc, char* argv[]) {
     }
 
     int opts = AmiClient::ENABLE_AUTO_PROCESS_INCOMING | AmiClient::ENABLE_AUTO_FLUSH_OUTGOING;
+    //int opts = AmiClient::ENABLE_AUTO_PROCESS_INCOMING;
     if (!client->start(host, port, loginId, opts)) {
         std::cerr << "[Main] Failed to start AmiClient." << std::endl;
         return 1;
