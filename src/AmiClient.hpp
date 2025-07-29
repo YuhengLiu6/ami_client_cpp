@@ -24,6 +24,12 @@ public:
     static const int LOG_MESSAGES = 1 << 8;  // 256
     static const int ENABLE_AUTO_FLUSH_OUTGOING = 1 << 9;  // 512
 
+    // Auto reconnect interval
+    long getAutoReconnectFrequencyMs() const;
+    void setAutoReconnectFrequencyMs(long ms);
+
+
+
     void setOptions(int options);
     int getOptions() const;
 
@@ -72,6 +78,9 @@ public:
 
     AmiClient& sendCommandDefinition(const AmiClientCommandDef& def);
 
+    // Manual pump if not auto-process
+    bool pumpIncomingEvent();
+
     // Listener management
     void addListener(std::shared_ptr<AmiClientListener> listener);
     bool removeListener(std::shared_ptr<AmiClientListener> listener);
@@ -111,6 +120,17 @@ private:
     bool autoFlush_;
 
     void sendLogin_();
+    void runnerLoop_();
+
+    std::string host_;
+    int port_;
+
+    // Runner thread for auto-reconnect / auto-process
+    std::thread runnerThread_;
+    std::atomic<bool> running_{ false };
+    long autoReconnectFrequencyMs_{ 1000 };
+    std::mutex runnerMutex_;
+    std::condition_variable runnerCv_;
 
     // Options state
     int   options_{ 0 };
@@ -121,4 +141,5 @@ private:
     bool  includeNow_{ false };
     bool  logConnectionRetryErrors_{ false };
     bool  logMessages_{ false };
+    bool  autoflush_{ false };
 };

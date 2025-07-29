@@ -76,7 +76,11 @@ public:
     long getAutoFlushBufferMillis() const;
     void setAutoFlushBufferMillis(long millis);
 
+    size_t getAutoFlushBufferSizeThreshold() const;
+    void setAutoFlushBufferSizeThreshold(size_t threshold);
+
     bool pumpIncomingEvent();
+    void setDebug(bool enable);
 
 private:
     void fireConnect();
@@ -141,6 +145,10 @@ private:
 
     std::mutex writeMutex_;
     friend class AmiClient;
+
+    bool debug_{ false };
+
+    size_t autoFlushBufferSizeThreshold_{ 0 };
 };
 
 #endif // RAW_AMI_CLIENT_HPP

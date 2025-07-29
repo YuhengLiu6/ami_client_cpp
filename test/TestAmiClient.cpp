@@ -141,7 +141,8 @@ int main(int argc, char* argv[]) {
             << " with loginId=\"" << loginId << "\"..." << std::endl;
     }
 
-    int opts = AmiClient::ENABLE_AUTO_PROCESS_INCOMING;
+    int opts = AmiClient::ENABLE_AUTO_PROCESS_INCOMING ;
+    //int opts = AmiClient::ENABLE_AUTO_PROCESS_INCOMING | AmiClient::LOG_MESSAGES;
     
 
     if (!client->start(host, port, loginId, opts)) {

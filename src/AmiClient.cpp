@@ -4,46 +4,56 @@
 
 
 AmiClient::AmiClient()
-    : autoFlush_(false) {
-    // Constructor implementation
-}
+    : autoFlush_(false) {}
 
-AmiClient::~AmiClient() {
-    // Destructor implementation
-}
+AmiClient::~AmiClient() { close(); }
 
 bool AmiClient::start(const std::string& host,
     int port,
     const std::string& loginId,
     int options) {
+    host_ = host;
+    port_ = port;
     loginId_ = loginId;
     setOptions(options);
 
-    // Pass logConnectionRetryErrors_ and autoflush flag to RawAmiClient
+    // Synchronous initial connect & login
     bool autoFlush = (options & ENABLE_AUTO_FLUSH_OUTGOING) != 0;
-    if (!rawClient_.connect(host,
-        port,
-        logConnectionRetryErrors_,
-        autoFlush))
+    if (!rawClient_.connect(host_, port_, logConnectionRetryErrors_, autoFlush)) {
         return false;
-
+    }
     sendLogin_();
 
-    // If auto-process is enabled, spin up the reader thread
-    if (autoProcessIncoming_) {
-        rawClient_.startReader();
-    }
+    // Start background runner for reconnect or auto-process
+    running_.store(true);
+    runnerThread_ = std::thread(&AmiClient::runnerLoop_, this);
     return true;
 }
 
+
+
+bool AmiClient::pumpIncomingEvent() {
+    // Manual pump
+    return rawClient_.pumpIncomingEvent();
+}
+
 void AmiClient::close() {
-    rawClient_.disconnect();
+    running_.store(false);
+    runnerCv_.notify_all();
+    if (runnerThread_.joinable()) runnerThread_.join();
 }
 
 bool AmiClient::isConnected() const {
     return rawClient_.isConnected();
 }
 
+long AmiClient::getAutoReconnectFrequencyMs() const {
+    return autoReconnectFrequencyMs_;
+}
+
+void AmiClient::setAutoReconnectFrequencyMs(long ms) {
+    autoReconnectFrequencyMs_ = ms;
+}
 
 void AmiClient::sendLogin_() {
     rawClient_.startMessage('L', includeSeqNum_, includeNow_);
@@ -65,14 +75,51 @@ void AmiClient::setOptions(int options) {
     includeNow_ = (options & ENABLE_SEND_TIMESTAMPS) != 0;
     logConnectionRetryErrors_ = (options & LOG_CONNECTION_RETRY_ERRORS) != 0;
     logMessages_ = (options & LOG_MESSAGES) != 0;
+    autoflush_ = (options & ENABLE_AUTO_FLUSH_OUTGOING) != 0;
 
-
+    rawClient_.setDebug(logMessages_);
 }
 
 int AmiClient::getOptions() const {
     return options_;
 }
 
+
+void AmiClient::runnerLoop_() {
+    while (running_.load()) {
+        // 1) Ensure connected
+        if (!rawClient_.isConnected()) {
+            if (autoReconnect_) {
+                // try reconnect loop
+                while (running_.load() && !rawClient_.connect(host_, port_, logConnectionRetryErrors_, autoflush_)) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(autoReconnectFrequencyMs_));
+                }
+                if (running_.load()) {
+                    sendLogin_();
+                }
+            }
+            else {
+                // wait until notify (onConnect)
+                std::unique_lock<std::mutex> lk(runnerMutex_);
+                runnerCv_.wait(lk, [&]() { return !running_.load() || rawClient_.isConnected(); });
+            }
+        }
+        // 2) Process incoming if enabled
+        if (autoProcessIncoming_ && rawClient_.isConnected()) {
+            // loop pump until disconnect
+            while (running_.load() && rawClient_.pumpIncomingEvent()) {
+            }
+            // disconnected or error
+            rawClient_.disconnect();
+        }
+        // 3) Sleep briefly to avoid busy spin when neither mode
+        if (!autoReconnect_ && !autoProcessIncoming_) {
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+        }
+    }
+    // Clean up
+    if (rawClient_.isConnected()) rawClient_.disconnect();
+}
 
 
 // Fluent message API
