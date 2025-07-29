@@ -79,6 +79,8 @@ public:
 
     bool pumpIncomingEvent();
 
+    void setDebug(bool dbg) { debug_ = dbg; }
+
 private:
     void fireConnect();
     void fireDisconnect();
@@ -142,6 +144,8 @@ private:
 
     std::mutex writeMutex_;
     friend class AmiClient;
+
+    bool debug_{ false };
 };
 
 #endif // RAW_AMI_CLIENT_HPP
