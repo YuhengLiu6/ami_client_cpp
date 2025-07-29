@@ -15,42 +15,15 @@ AmiClient::~AmiClient() {
 bool AmiClient::start(const std::string& host,
     int port,
     const std::string& loginId,
-    int options) {
+    bool autoFlush) {
     loginId_ = loginId;
-    setOptions(options);
-
-    // 1) connect 时传递 retry-log 和 autoFlush
-    if (!rawClient_.connect(host,
-        port,
-        logConnectionRetryErrors_,
-        autoFlushOutgoing_))
+    autoFlush_ = autoFlush;
+    if (!rawClient_.connect(host, port, /*logError*/ false, autoFlush_))
         return false;
-
-    // 2) 发送登录
     sendLogin_();
-
-    // 3) 如果用户希望自动处理 incoming，则启动 reader
-    if (autoProcessIncoming_) {
-        rawClient_.startReader();
-    }
-
+    rawClient_.fireOnLogin();
+    rawClient_.startReader();
     return true;
-}
-
-
-void AmiClient::setOptions(int options) {
-    options_ = options;
-    autoProcessIncoming_ = options & ENABLE_AUTO_PROCESS_INCOMING;
-    quietMode_ = options & ENABLE_QUIET;
-    autoReconnect_ = !(options & DISABLE_AUTO_RECONNECT);
-    includeSeqNum_ = options & ENABLE_SEND_SEQNUM;
-    includeNow_ = options & ENABLE_SEND_TIMESTAMPS;
-    logConnectionRetryErrors_ = options & LOG_CONNECTION_RETRY_ERRORS;
-    logMessages_ = options & LOG_MESSAGES;
-    autoFlushOutgoing_ = options & ENABLE_AUTO_FLUSH_OUTGOING;
-
-    // 如果需要把 rawClient 的 debug 打开：
-    rawClient_.setDebug(logMessages_);
 }
 
 void AmiClient::close() {
@@ -64,9 +37,6 @@ bool AmiClient::isConnected() const {
 void AmiClient::sendLogin_() {
     rawClient_.startMessage('L', /*includeSeqNum=*/false, /*includeNow=*/false)
         .addMessageParamString("I", loginId_);
-    if (quietMode_) {
-		rawClient_.addMessageParamString("O", "QUIET");
-    }
     rawClient_.sendMessageAndFlush();
 }
 
@@ -170,9 +140,9 @@ void AmiClient::onConnect(RawAmiClient* /*source*/) {
     {
         std::lock_guard<std::mutex> lk(listenerMutex_);
         tmp = listeners_;
-        }
+    }
     for (auto& l : tmp) l->onConnect(this);
-    
+
 }
 void AmiClient::onDisconnect(RawAmiClient* /*source*/) {
     std::vector<std::shared_ptr<AmiClientListener>> tmp;

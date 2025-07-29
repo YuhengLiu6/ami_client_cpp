@@ -35,8 +35,8 @@ public:
                 .setPriority(5);
 
             client->sendCommandDefinition(def);
-      
-                
+
+
 
             }).detach();*/
     }
@@ -110,9 +110,9 @@ public:
         /*for (const auto& [k, v] : params) {
             std::lock_guard<std::mutex> lk(coutMutex);
             printAmiValue(k, v);*/
-        //}
+            //}
 
-        // 3. 业务处理完成后，立即发回 Response
+            // 3. 业务处理完成后，立即发回 Response
         source
             ->startResponseMessage(requestId, /*status=*/0, /*message=*/"Processed")
             .addMessageParamLong("callback_code", 123)

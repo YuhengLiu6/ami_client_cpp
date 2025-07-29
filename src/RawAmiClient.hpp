@@ -15,9 +15,8 @@
 #include "AmiTypes.hpp"
 #include <any>            
 #include <unordered_map>
-namespace {
-    std::mutex g_logMutex;
-}
+ 
+extern std::mutex g_logMutex;
 extern std::mutex coutMutex;
 class RawAmiClientListener;
 
@@ -69,7 +68,7 @@ public:
     void addMessageParams(const std::unordered_map<std::string, std::any>& params);
     void addMessageParamObject(const std::string& key, const std::any& value);
 
-    RawAmiClient& RawAmiClient::flush(bool clearAfterSend);
+    RawAmiClient& flush(bool clearAfterSend);
 
     const std::string& getOutputBuffer() const;
 
@@ -79,14 +78,12 @@ public:
 
     bool pumpIncomingEvent();
 
-    void setDebug(bool dbg) { debug_ = dbg; }
-
 private:
     void fireConnect();
     void fireDisconnect();
     void fireMessageReceived(long long ts, long seq, int status, const std::string& msg);
     void fireMessageSent(const std::string& msg);
-	void fireOnLogin();
+    void fireOnLogin();
     void fireCommand(const std::string& requestId,
         const std::string& cmd,
         const std::string& userName,
@@ -105,12 +102,12 @@ private:
 
     template<typename F, typename... Args>
     void notifyListeners(F fn, Args&&... args);
- 
+
     void assertConnected() const;
     void assertInMessage() const;
-	void resetMessage();
+    void resetMessage();
 
-    std::string inBuffer_;     
+    std::string inBuffer_;
     std::atomic<bool> isInReceive_{ false };
     std::string outBuffer_;
     std::atomic<bool> isInSend_;
@@ -144,8 +141,6 @@ private:
 
     std::mutex writeMutex_;
     friend class AmiClient;
-
-    bool debug_{ false };
 };
 
 #endif // RAW_AMI_CLIENT_HPP

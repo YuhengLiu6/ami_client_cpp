@@ -14,17 +14,6 @@
  */
 class AmiClient : public RawAmiClientListener, public std::enable_shared_from_this<AmiClient> {
 public:
-    // === options bits===
-    static constexpr int ENABLE_AUTO_PROCESS_INCOMING = 1 << 1;   // 2
-    static constexpr int ENABLE_QUIET = 1 << 2;   // 4
-    static constexpr int DISABLE_AUTO_RECONNECT = 1 << 3;   // 8
-    static constexpr int ENABLE_SEND_TIMESTAMPS = 1 << 5;   // 32
-    static constexpr int ENABLE_SEND_SEQNUM = 1 << 6;   // 64
-    static constexpr int LOG_CONNECTION_RETRY_ERRORS = 1 << 7;   // 128
-    static constexpr int LOG_MESSAGES = 1 << 8;   // 256
-    static constexpr int ENABLE_AUTO_FLUSH_OUTGOING = 1 << 9;   // 512
-
-
     static std::shared_ptr<AmiClient> create() {
         auto instance = std::shared_ptr<AmiClient>(new AmiClient());
         instance->initialize();
@@ -42,7 +31,7 @@ public:
     bool start(const std::string& host,
         int port,
         const std::string& loginId,
-        int options);
+        bool autoFlush = false);
 
     /**
      * Disconnects and stops client.
@@ -75,7 +64,7 @@ public:
     AmiClient& sendMessage();
     AmiClient& sendMessageAndFlush();
     AmiClient& flush(bool clearAfterSend = true);
-  
+
     AmiClient& sendCommandDefinition(const AmiClientCommandDef& def);
 
     // Listener management
@@ -114,19 +103,7 @@ private:
     std::vector<std::shared_ptr<AmiClientListener>> listeners_;
     std::mutex listenerMutex_;
     std::string loginId_;
-    
+    bool autoFlush_;
 
     void sendLogin_();
-    void setOptions(int options);
-
-    int  options_;
-    bool autoFlush_;
-    bool autoProcessIncoming_;
-    bool quietMode_;
-    bool autoReconnect_;
-    bool includeSeqNum_;
-    bool includeNow_;
-    bool logConnectionRetryErrors_;
-    bool logMessages_;
-    bool autoFlushOutgoing_;
 };

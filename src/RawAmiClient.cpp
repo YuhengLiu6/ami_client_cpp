@@ -28,7 +28,7 @@
 
 using namespace std::chrono;
 std::mutex coutMutex;
-
+std::mutex g_logMutex;
 template<typename Method, typename... Args>
 void RawAmiClient::notifyListeners(Method method, Args&&... args) {
     std::vector<std::shared_ptr<RawAmiClientListener>> tmp;
@@ -163,13 +163,13 @@ void RawAmiClient::startReader() {
                     if (line.empty()) continue;
 
                     auto err = processIncoming(line);
-                    if(debug_) {
+                    {
                         std::lock_guard lk(coutMutex);
-                        if (err.empty())
-                            std::cout << "[DEBUG-reader] PROCESSING OK: " << line << std::endl;
+                        /*if (err.empty())
+                            std::cout << "[reader] OK: " << line << std::endl;
                         else
-                            std::cerr << "[DEBUG-reader] WARN: " << err << "  line='" << line << "'" << std::endl;
-					}
+                            std::cerr << "[reader] WARN: " << err << "  line='" << line << "'" << std::endl;*/
+                    }
                 }
             }
             catch (const std::exception& e) {
@@ -289,12 +289,8 @@ std::string RawAmiClient::processIncoming(const std::string& line) {
     std::string s = line;
     //if (!s.empty() && s.back() == '\r') s.pop_back();
     while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back()))) s.pop_back();
-    
-    if (debug_) {
-        std::lock_guard lk(coutMutex);
-        std::cout << "[DEBUG] Incoming type: '" << s[0] << "' | Raw: " << s << std::endl;
-    }
-    
+
+    //std::cout << "[DEBUG] Incoming type: '" << s[0] << "' | Raw: " << s << std::endl;
 
     if (s.size() < 3 || s[1] != '@') return "Invalid header";
 
@@ -310,6 +306,29 @@ std::string RawAmiClient::processIncoming(const std::string& line) {
     }
 
     size_t pos = pipe1 + 1;
+
+    //long long ts = 0;
+    //size_t pos = 0;
+
+    //if (s.size() > 1 && s[1] == '@') {
+    //    auto pipe1 = s.find('|', 2);
+    //    if (pipe1 == std::string::npos) return "Missing | after timestamp";
+    //    try {
+    //        ts = std::stoll(s.substr(2, pipe1 - 2));
+    //    }
+    //    catch (...) {
+    //        return "Invalid timestamp";
+    //    }
+    //    pos = pipe1 + 1;
+    //}
+    //else {
+    //    // 没有 timestamp，就直接把 pos 设到第一个 '|'
+    //    auto pipe0 = s.find('|', 1);
+    //    if (pipe0 == std::string::npos) return "Missing | after header";
+    //    pos = pipe0 + 1;
+    //}
+
+    //std::cout << "[processIncoming]: Get inside" << std::endl;
 
     try {
         switch (s[0]) {
@@ -343,11 +362,10 @@ std::string RawAmiClient::processIncoming(const std::string& line) {
 
             std::string msg;
             if (!readUntilSkipEscaped(s, pos, '"', msg)) {
-                if(debug_)
-					std::cout << "[DEBUG] readUntilSkipEscaped Failed! " << msg << std::endl;
+                std::cout << "[DEBUG] readUntilSkipEscaped Failed! " << msg << std::endl;
                 return "Malformed message string";
             }
-       
+
 
             while (pos < s.size() && std::isspace(static_cast<unsigned char>(s[pos])))
                 ++pos;
@@ -360,7 +378,7 @@ std::string RawAmiClient::processIncoming(const std::string& line) {
         }
 
         case 'E': {
-            
+
             std::map<std::string, AmiValue> params;
             parseIncomingParams(s, pos, params);
 
@@ -377,16 +395,13 @@ std::string RawAmiClient::processIncoming(const std::string& line) {
             std::string type = getStr("T"); params.erase("T");
             std::string objectId = getStr("O"); params.erase("O");
 
-
-            if(debug_) {
-                std::lock_guard lk(coutMutex);
-                std::cout << "[DEBUG] Processing E Command: "
-                    << "RequestId: " << requestId
-                    << ", User: " << userName
-                    << ", Cmd: " << cmd
-                    << ", Type: " << type
-                    << ", ObjectId: " << objectId << std::endl;
-			}
+            /*         std::cout << "[Processing E Command] "
+                         << "RequestId: " << requestId
+                         << ", User: " << userName
+                         << ", Cmd: " << cmd
+                         << ", Type: " << type
+                         << ", ObjectId: " << objectId << std::endl;*/
+            std::cout << "[Processing E Command]: try to fire ecommand" << std::endl;
             fireCommand(requestId, cmd, userName, type, objectId, params);
             break;
         }
