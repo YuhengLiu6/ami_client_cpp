@@ -101,7 +101,7 @@ private:
     std::string processIncoming(const std::string& line);
 
     long resetSeqNum(long seqnum);
-    // 新增：启动后台 reader thread
+
     void startReader();
 
     template<typename F, typename... Args>
@@ -126,11 +126,11 @@ private:
     std::atomic<bool> sending_;
     std::atomic<bool> loggedIn_;
     std::atomic<bool> needsFlush_;
-    // ==============================================
+
     std::thread              autoFlushThread_;
     std::atomic<bool>        stopAutoFlush_{ false };
-    long                     autoFlushIntervalMs_{ 2 };    // 毫秒
-    // 条件等待 & 锁，用于唤醒后台线程
+    long                     autoFlushIntervalMs_{ 2 };    
+
     std::mutex               flushMutex_;
     std::condition_variable  flushCv_;
 

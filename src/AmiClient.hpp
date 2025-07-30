@@ -9,9 +9,8 @@
 #include "RawAmiClientListener.hpp"
 #include "AmiClientListener.hpp"
 #include "AmiClientCommandDef.hpp"
-/**
- * High-level AMI client wrapping RawAmiClient for easy use.
- */
+
+
 class AmiClient : public RawAmiClientListener, public std::enable_shared_from_this<AmiClient> {
 public:
     // Option flags
@@ -24,10 +23,9 @@ public:
     static const int LOG_MESSAGES = 1 << 8;  // 256
     static const int ENABLE_AUTO_FLUSH_OUTGOING = 1 << 9;  // 512
 
-    // Auto reconnect interval
+
     long getAutoReconnectFrequencyMs() const;
     void setAutoReconnectFrequencyMs(long ms);
-
 
 
     void setOptions(int options);
@@ -49,7 +47,7 @@ public:
 
     void close();
 
-    // Fluent API for building and sending messages
+
     AmiClient& startStatusMessage();
     AmiClient& startObjectMessage(const std::string& type,
         const std::string& id = std::string(),
@@ -78,16 +76,16 @@ public:
 
     AmiClient& sendCommandDefinition(const AmiClientCommandDef& def);
 
-    // Manual pump if not auto-process
+  
     bool pumpIncomingEvent();
 
-    // Listener management
+
     void addListener(std::shared_ptr<AmiClientListener> listener);
     bool removeListener(std::shared_ptr<AmiClientListener> listener);
 
     bool isConnected() const;
 
-    // RawAmiClientListener overrides (forward events)
+ 
     void onConnect(RawAmiClient* source) override;
     void onDisconnect(RawAmiClient* source) override;
     void onLoggedIn(RawAmiClient* source) override;
@@ -113,13 +111,13 @@ public:
     void setAutoFlushBufferMillis(long millis);
 
 private:
-    AmiClient(); // Declare the constructor only once
+    AmiClient();
 
     void initialize() {
         rawClient_.addListener(std::static_pointer_cast<RawAmiClientListener>(shared_from_this()));
     }
 
-    RawAmiClient rawClient_;                // underlying raw client
+    RawAmiClient rawClient_;       
     std::vector<std::shared_ptr<AmiClientListener>> listeners_;
     std::mutex listenerMutex_;
     std::string loginId_;
@@ -131,21 +129,21 @@ private:
     std::string host_;
     int port_;
 
-    // Runner thread for auto-reconnect / auto-process
+
     std::thread runnerThread_;
     std::atomic<bool> running_{ false };
     long autoReconnectFrequencyMs_{ 1000 };
     std::mutex runnerMutex_;
     std::condition_variable runnerCv_;
 
-    // Options state
+
     int   options_{ 0 };
-    bool  autoProcessIncoming_{ false };
+    bool  autoProcessIncoming_{ true };
     bool  quietMode_{ false };
     bool  autoReconnect_{ true };
     bool  includeSeqNum_{ false };
     bool  includeNow_{ false };
     bool  logConnectionRetryErrors_{ false };
     bool  logMessages_{ false };
-    bool  autoflush_{ false };
+    bool  autoflush_{ true };
 };

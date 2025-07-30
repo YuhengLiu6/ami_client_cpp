@@ -17,7 +17,7 @@ message(STATUS "Boost_INCLUDE_DIRS = ${Boost_INCLUDE_DIRS}")
 message(STATUS "Boost_LIBRARIES    = ${Boost_LIBRARIES}")
 
 # ✅ 自动收集源文件
-file(GLOB_RECURSE SOURCES "src/*.cpp" "test/TestAutoFlush.cpp")
+file(GLOB_RECURSE SOURCES "src/*.cpp" "test/TestAmiClient.cpp")
 
 # ✅ 生成可执行文件
 add_executable(${COMPILED_NAME} ${SOURCES})

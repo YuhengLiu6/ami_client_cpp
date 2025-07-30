@@ -23,7 +23,7 @@ public:
             std::lock_guard<std::mutex> lk(coutMutex);
             std::cout << "[Listener] Logged in, starting auto-flush tests..." << std::endl;
         }
-
+        // ------- 1) buffer size test -------
         size_t threshold = 100;
         client->setAutoFlushBufferSizeThreshold(threshold);
         {
@@ -31,7 +31,7 @@ public:
             std::cout << "[Test] Buffer-size threshold = " << threshold << " bytes" << std::endl;
         }
 
-        for (int i = 1; i <= 5; ++i) {
+        for (int i = 1; i <= 30; ++i) {
             client->
                 startObjectMessage("TestType", "bufMsg" + std::to_string(i))
                 .addMessageParamString("data", std::string(30, 'X'))
@@ -46,27 +46,26 @@ public:
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
 
-        // 给一点时间让最后一次 flush 完成
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
-        // ------- 2) 时间间隔 自动刷新 测试 -------
-        client->setAutoFlushBufferSizeThreshold(0);  // 禁用大小触发
+        // ------- 2) time invertal test -------
+        client->setAutoFlushBufferSizeThreshold(0);  
         long intervalMs = 5000;
         client->setAutoFlushBufferMillis(intervalMs);
         std::cout << "[Test] Time-based auto-flush interval = " << intervalMs << " ms" << std::endl;
 
-        // 发送一条 buffered 消息，观察定时 flush
+
         client->
             startObjectMessage("TestType", "timeMsg")
             .addMessageParamString("payload", "time-test")
-            .sendMessage();  // buffered
+            .sendMessage();  
 
         std::cout << "[Test] Buffered one message, waiting for timed flush..." << std::endl;
         std::this_thread::sleep_for(std::chrono::milliseconds(intervalMs + 200));
 
         std::cout << "[Test] Time-based auto-flush test completed." << std::endl;
 
-        // 关闭 client
+    
         client->close();
     }
 
@@ -98,7 +97,7 @@ public:
         const std::string& objectType,
         const std::string& objectId,
         const std::map<std::string, AmiValue>& params) override {
-        // 忽略
+
     }
 };
 
@@ -121,14 +120,17 @@ int main(int argc, char* argv[]) {
             << " with loginId=\"" << loginId << "\"..." << std::endl;
     }
 
-    int opts = AmiClient::ENABLE_AUTO_PROCESS_INCOMING | AmiClient::ENABLE_AUTO_FLUSH_OUTGOING;
+    //int opts = AmiClient::ENABLE_AUTO_FLUSH_OUTGOING | AmiClient::LOG_MESSAGES;
+    int opts = AmiClient::ENABLE_AUTO_PROCESS_INCOMING | AmiClient::ENABLE_AUTO_FLUSH_OUTGOING | AmiClient::ENABLE_SEND_TIMESTAMPS | AmiClient::ENABLE_SEND_SEQNUM | AmiClient::LOG_MESSAGES;
+    //int opts = AmiClient::ENABLE_AUTO_PROCESS_INCOMING | AmiClient::ENABLE_AUTO_FLUSH_OUTGOING | AmiClient::LOG_MESSAGES;
     //int opts = AmiClient::ENABLE_AUTO_PROCESS_INCOMING;
+
     if (!client->start(host, port, loginId, opts)) {
         std::cerr << "[Main] Failed to start AmiClient." << std::endl;
         return 1;
     }
 
-    // 等待测试完成
+
     while (client->isConnected()) {
         std::this_thread::sleep_for(std::chrono::seconds(1));
     }

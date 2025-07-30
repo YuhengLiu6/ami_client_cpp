@@ -136,15 +136,15 @@ void AmiClient::runnerLoop_() {
 }
 
 
-// Fluent message API
+
 AmiClient& AmiClient::startStatusMessage() {
-    rawClient_.startMessage('S', false, false);
+    rawClient_.startMessage('S', includeSeqNum_, includeNow_);
     return *this;
 }
 AmiClient& AmiClient::startObjectMessage(const std::string& type,
     const std::string& id,
     long expiresOn) {
-    rawClient_.startMessage('O', false, false)
+    rawClient_.startMessage('O', includeSeqNum_, includeNow_)
         .addMessageParamString("T", type);
     if (!id.empty()) rawClient_.addMessageParamString("I", id);
     if (expiresOn)  rawClient_.addMessageParamLong("E", expiresOn);
@@ -153,20 +153,20 @@ AmiClient& AmiClient::startObjectMessage(const std::string& type,
 AmiClient& AmiClient::startResponseMessage(const std::string& requestId,
     int status,
     const std::string& msg) {
-    rawClient_.startMessage('R', false, false)
+    rawClient_.startMessage('R', includeSeqNum_, includeNow_)
         .addMessageParamString("I", requestId)
         .addMessageParamInt("S", status);
     if (!msg.empty()) rawClient_.addMessageParamString("M", msg);
     return *this;
 }
 AmiClient& AmiClient::startCommandDefinition(const std::string& id) {
-    rawClient_.startMessage('C', false, false)
+    rawClient_.startMessage('C', includeSeqNum_, includeNow_)
         .addMessageParamString("I", id);
     return *this;
 }
 AmiClient& AmiClient::startDeleteMessage(const std::string& type,
     const std::string& id) {
-    rawClient_.startMessage('D', false, false)
+    rawClient_.startMessage('D', includeSeqNum_, includeNow_)
         .addMessageParamString("T", type)
         .addMessageParamString("I", id);
     return *this;
@@ -215,7 +215,7 @@ AmiClient& AmiClient::flush(bool clearAfterSend) {
     return *this;
 }
 
-// Listener management
+
 void AmiClient::addListener(std::shared_ptr<AmiClientListener> listener) {
     std::lock_guard<std::mutex> lk(listenerMutex_);
     listeners_.push_back(listener);
@@ -230,7 +230,7 @@ bool AmiClient::removeListener(std::shared_ptr<AmiClientListener> listener) {
     return false;
 }
 
-// RawAmiClientListener overrides: forward to high-level listeners
+
 void AmiClient::onConnect(RawAmiClient* /*source*/) {
     std::vector<std::shared_ptr<AmiClientListener>> tmp;
     {

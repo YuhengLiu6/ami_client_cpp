@@ -14,13 +14,8 @@
 #include <vector>
 #include <stdexcept>
 #include <memory>
-
-
-#include <iomanip>  // for std::setprecision
+#include <iomanip>  
 #include <bitset>
-
-
-
 #include <nlohmann/json.hpp> 
 #include <boost/beast/core/detail/base64.hpp>
 #include <cppcodec/base64_rfc4648.hpp>
@@ -78,7 +73,6 @@ bool RawAmiClient::connect(const std::string& host,
 
         connected_ = true;
         autoFlush_ = autoFlush;
-        //startReader();
         fireConnect();
 
         if (autoFlush_) {
@@ -104,19 +98,16 @@ void RawAmiClient::disconnect() {
         std::cout << "[disconnect] Shutting down..." << std::endl;
     }
 
-    // 通知线程退出
     connected_ = false;
     stopAutoFlush_ = true;
     flushCv_.notify_all();
 
-    // 关闭 socket 以唤醒 read_until
     if (socket_) {
         boost::system::error_code ec;
         socket_->shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
         socket_->close(ec);
     }
 
-    // join 两条后台线程
     if (readerThread_.joinable())     readerThread_.join();
     if (autoFlushThread_.joinable())  autoFlushThread_.join();
 
@@ -150,11 +141,9 @@ void RawAmiClient::startReader() {
                 std::string line;
 
                 while (std::getline(is, line)) {
-                    // 去掉换行符残留
                     if (!line.empty() && line.back() == '\r')
                         line.pop_back();
 
-                    // 去除首尾空格
                     size_t st = 0;
                     while (st < line.size() && std::isspace((unsigned char)line[st])) ++st;
                     while (!line.empty() && std::isspace((unsigned char)line.back())) line.pop_back();
@@ -197,7 +186,7 @@ void RawAmiClient::parseIncomingParams(
 
         AmiValue val;
 
-        // ---------- 引号字符串 ----------
+
         if (str[pos] == '"') {
             ++pos;
             std::string quoted;
@@ -223,7 +212,7 @@ void RawAmiClient::parseIncomingParams(
                 val = quoted;
             }
 
-            // ---------- 单引号字符串 ----------
+
         }
         else if (str[pos] == '\'') {
             ++pos;
@@ -231,7 +220,7 @@ void RawAmiClient::parseIncomingParams(
             if (!readUntilSkipEscaped(str, pos, '\'', quoted)) break;
             val = quoted;
 
-            // ---------- true / false ----------
+
         }
         else if (str.compare(pos, 4, "true") == 0) {
             val = true;
@@ -240,14 +229,10 @@ void RawAmiClient::parseIncomingParams(
         else if (str.compare(pos, 5, "false") == 0) {
             val = false;
             pos += 5;
-
-            // ---------- null ----------
         }
         else if (str.compare(pos, 4, "null") == 0) {
             val = nullptr;
             pos += 4;
-
-            // ---------- 数字 ----------
         }
         else {
             size_t end = str.find('|', pos);
@@ -284,11 +269,10 @@ std::string RawAmiClient::processIncoming(const std::string& line) {
     if (line.find("Welcome to 3forge AMI") != std::string::npos ||
         line.find("logged in") != std::string::npos ||
         line.find("|Q=0|S=0|") != std::string::npos) {
-        fireOnLogin();  // ✅ 合适触发点
+        fireOnLogin();  
     }
 
     std::string s = line;
-    //if (!s.empty() && s.back() == '\r') s.pop_back();
     while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back()))) s.pop_back();
 
     if (debug_) {
@@ -309,34 +293,10 @@ std::string RawAmiClient::processIncoming(const std::string& line) {
 
     size_t pos = pipe1 + 1;
 
-    //long long ts = 0;
-    //size_t pos = 0;
-
-    //if (s.size() > 1 && s[1] == '@') {
-    //    auto pipe1 = s.find('|', 2);
-    //    if (pipe1 == std::string::npos) return "Missing | after timestamp";
-    //    try {
-    //        ts = std::stoll(s.substr(2, pipe1 - 2));
-    //    }
-    //    catch (...) {
-    //        return "Invalid timestamp";
-    //    }
-    //    pos = pipe1 + 1;
-    //}
-    //else {
-    //    // 没有 timestamp，就直接把 pos 设到第一个 '|'
-    //    auto pipe0 = s.find('|', 1);
-    //    if (pipe0 == std::string::npos) return "Missing | after header";
-    //    pos = pipe0 + 1;
-    //}
-
-    //std::cout << "[processIncoming]: Get inside" << std::endl;
-
     try {
         switch (s[0]) {
         case 'M': {
 
-            // 解析 MQ=..., S=..., M="..."
             auto require = [&](char expected, const char* msg) {
                 if (pos >= s.size() || s[pos] != expected)
                     throw std::runtime_error(msg);
@@ -399,12 +359,7 @@ std::string RawAmiClient::processIncoming(const std::string& line) {
             std::string type = getStr("T"); params.erase("T");
             std::string objectId = getStr("O"); params.erase("O");
 
-            /*         std::cout << "[Processing E Command] "
-                         << "RequestId: " << requestId
-                         << ", User: " << userName
-                         << ", Cmd: " << cmd
-                         << ", Type: " << type
-                         << ", ObjectId: " << objectId << std::endl;*/
+
             if (debug_) {
                 std::cout << "[Processing E Command]: try to fire ecommand" << std::endl;
             }
@@ -424,10 +379,8 @@ std::string RawAmiClient::processIncoming(const std::string& line) {
         return std::string("Exception during parse: ") + ex.what();
     }
 
-    return {}; // success
+    return {}; 
 }
-
-
 
 
 
@@ -501,16 +454,8 @@ bool RawAmiClient::pumpIncomingEvent() {
         while (connected_) {
             char c;
             boost::system::error_code ec;
-
             boost::asio::read(*socket_, boost::asio::buffer(&c, 1), ec);
 
-            if (debug_) {
-                std::lock_guard<std::mutex> lk(coutMutex);
-                std::cout << "[DEBUG-pumpEvent] Read char: 0x"
-                    << std::hex << (int)(unsigned char)c << std::dec
-                    << " (" << (std::isprint(c) ? std::string(1, c) : "?") << ")"
-                    << ", buffer: \"" << inBuffer_ << "\"\n";
-            }
 
             if (ec) {
                 if (ec == boost::asio::error::eof) {
@@ -595,8 +540,8 @@ bool RawAmiClient::sendMessage(const std::string& msg, bool flush) {
     assertConnected();
 
     std::lock_guard writeLock(writeMutex_);
-    // buffered or immediate?
     if (!flush) {
+        // Append message to output buffer (no immediate write)
         outBuffer_ += msg;
         if (outBuffer_.empty() || outBuffer_.back() != '\n')
             outBuffer_ += '\n';
@@ -606,12 +551,12 @@ bool RawAmiClient::sendMessage(const std::string& msg, bool flush) {
         }
 
 
-        // 2) 如果开启 autoFlush 且超过阈值，就立即写出
+        // Auto-flush based on buffer size threshold
         if (autoFlush_
             && autoFlushBufferSizeThreshold_ > 0
             && outBuffer_.size() >= autoFlushBufferSizeThreshold_)
         {
-            // 立即刷出所有缓冲
+            // Buffer has reached flush threshold — write to socket
             boost::asio::write(*socket_, boost::asio::buffer(outBuffer_));
             fireMessageSent(outBuffer_);
             outBuffer_.clear();
@@ -623,12 +568,13 @@ bool RawAmiClient::sendMessage(const std::string& msg, bool flush) {
         return true;
     }
 
-    // immediate write
+    // If flush=true, write the message immediately
     std::string toWrite = msg;
     if (toWrite.empty() || toWrite.back() != '\n')
         toWrite += '\n';
     boost::asio::write(*socket_, boost::asio::buffer(toWrite));
     fireMessageSent(toWrite);
+
     if (debug_) {
         std::lock_guard lk(coutMutex);
         std::cout << "[sendMessage] flushed: " << msg << std::endl;
@@ -641,21 +587,24 @@ bool RawAmiClient::sendMessage(const std::string& msg, bool flush) {
 RawAmiClient& RawAmiClient::flush(bool clearAfterSend) {
     assertConnected();
     if (clearAfterSend) {
-        // 不论 autoFlush_，都立即写
+        // Always flush immediately, regardless of autoFlush_ setting
         std::string buf;
         {
             std::lock_guard lk(writeMutex_);
             buf.swap(outBuffer_);
         }
+        // Ensure newline termination
         if (buf.empty() || buf.back() != '\n') buf += '\n';
         boost::asio::write(*socket_, boost::asio::buffer(buf));
+
         fireMessageSent(buf);
+
         needsFlush_ = false;
         isInSend_ = false;
         return *this;
     }
     else if (!autoFlush_) {
-        // swap buffer
+        // Manual flush mode: flush immediately if autoFlush is disabled
         std::string buf;
         {
             std::lock_guard lk(writeMutex_);
@@ -673,7 +622,7 @@ RawAmiClient& RawAmiClient::flush(bool clearAfterSend) {
         needsFlush_ = false;
     }
     else {
-        // auto-flush 模式不变
+        // In auto-flush mode: just signal the flush thread to flush soon
         std::unique_lock lk(flushMutex_);
         needsFlush_ = true;
         flushCv_.notify_one();
@@ -687,25 +636,15 @@ RawAmiClient& RawAmiClient::flush(bool clearAfterSend) {
 }
 
 
-//RawAmiClient& RawAmiClient::sendMessage() {
-//    assertConnected();
-//    bool expected = true;
-//    if (!isInSend_.compare_exchange_strong(expected, false))
-//        throw std::runtime_error("Not in object send");
-//
-//    needsFlush_ = true;
-//    return flush(false); // 不清空 outBuffer_
-//}
 
 RawAmiClient& RawAmiClient::sendMessage() {
     assertConnected();
 
-    // 切换状态，允许再次 startMessage
     bool expected = true;
     if (!isInSend_.compare_exchange_strong(expected, false))
         throw std::runtime_error("Not in object send");
 
-    // 追加本条消息
+    // Append the current message to the batch buffer
     {
         std::lock_guard<std::mutex> lk(writeMutex_);
         batchBuffer_ += outBuffer_;
@@ -713,17 +652,32 @@ RawAmiClient& RawAmiClient::sendMessage() {
             batchBuffer_ += '\n';
     }
 
-    // 阈值模式：累积大小 ≥ 阈值时立即写出
+    // Auto flush (threshold-based): if batch exceeds threshold, write immediately
     if (autoFlush_ && autoFlushBufferSizeThreshold_ > 0) {
         std::lock_guard<std::mutex> lk(writeMutex_);
+        if (debug_) {
+            std::lock_guard lk(coutMutex);
+            std::cout << "[DEBUG-sendMessage] AutoFlush enabled - size threshold mode. "
+                << "batchBuffer_.size() = " << batchBuffer_.size()
+                << ", threshold = " << autoFlushBufferSizeThreshold_ << std::endl;
+        }
         if (batchBuffer_.size() >= autoFlushBufferSizeThreshold_) {
             boost::asio::write(*socket_, boost::asio::buffer(batchBuffer_));
+            if (debug_) {
+                std::lock_guard lk(coutMutex);
+                std::cout << "[DEBUG-sendMessage] Threshold met, flushing immediately. Message:\n" << batchBuffer_ << std::endl;
+            }
             fireMessageSent(batchBuffer_);
             batchBuffer_.clear();
         }
     }
     else if (autoFlush_) {
-        // 定时模式：标记后通知 autoFlushLoop
+        // Auto flush (time-based): notify flush thread
+        if (debug_) {
+            std::lock_guard lk(coutMutex);
+            std::cout << "[DEBUG-sendMessage] AutoFlush enabled - time-based mode. "
+                << "Marking needsFlush_ = true and notifying autoFlushLoop." << std::endl;
+        }
         needsFlush_ = true;
         flushCv_.notify_one();
     }
@@ -738,7 +692,7 @@ RawAmiClient& RawAmiClient::sendMessageAndFlush() {
     if (!isInSend_.compare_exchange_strong(expected, false))
         throw std::runtime_error("Not in object send");
 
-    // 先把本条消息追加
+    // Append message to batch buffer
     {
         std::lock_guard<std::mutex> lk(writeMutex_);
         batchBuffer_ += outBuffer_;
@@ -746,7 +700,7 @@ RawAmiClient& RawAmiClient::sendMessageAndFlush() {
             batchBuffer_ += '\n';
     }
 
-    // 然后立即写并清空
+    // Immediately write to socket and clear buffer
     {
         std::lock_guard<std::mutex> lk(writeMutex_);
         boost::asio::write(*socket_, boost::asio::buffer(batchBuffer_));
@@ -761,16 +715,16 @@ void RawAmiClient::autoFlushLoop() {
     std::unique_lock<std::mutex> lk(flushMutex_);
     while (!stopAutoFlush_) {
         if (autoFlushBufferSizeThreshold_ > 0) {
-            // 阈值模式：随 notify() 或 spurious wakeup 返回
+            // Size-based mode: wait indefinitely until notified
             flushCv_.wait(lk);
         }
         else {
-            // 定时模式：等待间隔
+            // Time-based mode: wait for timeout or notify
             flushCv_.wait_for(lk, std::chrono::milliseconds(autoFlushIntervalMs_));
         }
         if (stopAutoFlush_) break;
 
-        // 定时模式下，检查 needsFlush_
+        // In time-based mode, check if a flush is needed
         if (autoFlushBufferSizeThreshold_ == 0 && needsFlush_) {
             std::string buf;
             {
@@ -824,7 +778,7 @@ void RawAmiClient::fireDisconnect() {
 }
 
 void RawAmiClient::fireOnLogin() {
-    if (loggedIn_.exchange(true)) return;  // 保证只触发一次
+    if (loggedIn_.exchange(true)) return;  
     notifyListeners(&RawAmiClientListener::onLoggedIn, this);
 }
 
@@ -850,7 +804,7 @@ void RawAmiClient::fireCommand(const std::string& requestId,
 
 
 long RawAmiClient::resetSeqNum(long seqnum) {
-    std::lock_guard<std::mutex> lock(seqnumMutex_);  // optional thread safety
+    std::lock_guard<std::mutex> lock(seqnumMutex_);  
     long old = seqnum_;
     seqnum_ = seqnum;
     return old;
@@ -889,6 +843,13 @@ RawAmiClient& RawAmiClient::startMessage(char type, bool includeSeqNum, bool inc
     if (includeNow)
         outBuffer_ += "@" + std::to_string(getNow());
 
+    if (debug_) {
+        std::cout << "[DEBUG-startMessage] type: " << type
+            << ", includeSeqNum: " << includeSeqNum
+            << ", includeNow: " << includeNow
+            << ", seqnum_: " << seqnum_ 
+            << ", timestamp: " << std::to_string(getNow()) << std::endl;
+    }
     return *this;
 }
 
@@ -1014,7 +975,7 @@ RawAmiClient& RawAmiClient::addMessageParamDoubleEncoded(const std::string& key,
         uint64_t bits;
     } u;
     u.d = value;
-    outBuffer_ += "|" + key + "=D" + std::to_string(u.bits);  // 可以替换为 Base64 编码
+    outBuffer_ += "|" + key + "=D" + std::to_string(u.bits);  
     return *this;
 }
 
@@ -1025,7 +986,7 @@ RawAmiClient& RawAmiClient::addMessageParamFloatEncoded(const std::string& key, 
         uint32_t bits;
     } u;
     u.f = value;
-    outBuffer_ += "|" + key + "=F" + std::to_string(u.bits);  // 可以替换为 Base64 编码
+    outBuffer_ += "|" + key + "=F" + std::to_string(u.bits);  
     return *this;
 }
 
