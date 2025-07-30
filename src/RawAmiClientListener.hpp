@@ -14,7 +14,7 @@ public:
     virtual void onConnect(RawAmiClient* client) = 0;
     virtual void onDisconnect(RawAmiClient* client) = 0;
     virtual void onMessageReceived(RawAmiClient* client,
-                                   long long ts,
+                                   long ts,
                                    long seqNum,
                                    int status,
                                    const std::string& message) = 0;

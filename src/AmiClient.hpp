@@ -90,7 +90,7 @@ public:
     void onDisconnect(RawAmiClient* source) override;
     void onLoggedIn(RawAmiClient* source) override;
     void onMessageReceived(RawAmiClient* source,
-        long long timestamp,
+        long timestamp,
         long seqNum,
         int status,
         const std::string& message) override;

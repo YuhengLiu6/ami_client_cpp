@@ -11,6 +11,7 @@ using AmiValue = std::variant<
     bool,
     int,
     long long,
+    long,
     float,
     double,
     std::string,

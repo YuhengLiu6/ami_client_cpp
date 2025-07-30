@@ -257,7 +257,7 @@ void AmiClient::onLoggedIn(RawAmiClient* /*source*/) {
     for (auto& l : tmp) l->onLoggedIn(this);
 }
 void AmiClient::onMessageReceived(RawAmiClient* /*src*/,
-    long long ts,
+    long ts,
     long seq,
     int status,
     const std::string& msg) {

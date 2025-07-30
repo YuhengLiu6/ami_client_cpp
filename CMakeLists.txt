@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(CMAKE_PREFIX_PATH "C:/Users/YuhengLiu/vcpkg/installed/x64-windows")
-set(COMPILED_NAME "testAutoFlush")
+set(COMPILED_NAME "test")
 
 
 find_package(Boost REQUIRED CONFIG COMPONENTS asio system)
@@ -15,7 +15,7 @@ find_package(nlohmann_json CONFIG REQUIRED)
 message(STATUS "Boost_INCLUDE_DIRS = ${Boost_INCLUDE_DIRS}")
 message(STATUS "Boost_LIBRARIES    = ${Boost_LIBRARIES}")
 
-file(GLOB_RECURSE SOURCES "src/*.cpp" "test/TestAutoFlush.cpp")
+file(GLOB_RECURSE SOURCES "src/*.cpp" "test/TestAmiClient.cpp")
 
 
 add_executable(${COMPILED_NAME} ${SOURCES})

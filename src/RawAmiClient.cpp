@@ -283,7 +283,7 @@ std::string RawAmiClient::processIncoming(const std::string& line) {
     size_t pipe1 = s.find('|', 2);
     if (pipe1 == std::string::npos) return "Missing | after timestamp";
 
-    long long ts = 0;
+    long ts = 0;
     try {
         ts = std::stoll(s.substr(2, pipe1 - 2));
     }
@@ -782,7 +782,7 @@ void RawAmiClient::fireOnLogin() {
     notifyListeners(&RawAmiClientListener::onLoggedIn, this);
 }
 
-void RawAmiClient::fireMessageReceived(long long ts, long seq, int status, const std::string& msg) {
+void RawAmiClient::fireMessageReceived(long ts, long seq, int status, const std::string& msg) {
     notifyListeners(&RawAmiClientListener::onMessageReceived,
         this, ts, seq, status, msg);
 }

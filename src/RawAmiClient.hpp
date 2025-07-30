@@ -85,7 +85,7 @@ public:
 private:
     void fireConnect();
     void fireDisconnect();
-    void fireMessageReceived(long long ts, long seq, int status, const std::string& msg);
+    void fireMessageReceived(long ts, long seq, int status, const std::string& msg);
     void fireMessageSent(const std::string& msg);
     void fireOnLogin();
     void fireCommand(const std::string& requestId,

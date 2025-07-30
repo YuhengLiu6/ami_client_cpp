@@ -18,49 +18,49 @@ public:
         try {
             std::cout << "[Listener] LoggedIn." << std::endl;
 
-            std::thread([client]() {
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
-                //const std::string cmd1 =
-                //    R"(C|I="bst"|N="2nd Bust Every Order"|H="busts all orders"|L=2)";
-                //client->sendMessage(cmd1, /*autoFlush=*/true);
+       
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            //const std::string cmd1 =
+            //    R"(C|I="bst"|N="2nd Bust Every Order"|H="busts all orders"|L=2)";
+            //client->sendMessage(cmd1, /*autoFlush=*/true);
 
 
-                //const std::string cmd2 =
-                //    R"(O|I="test3"|T="rawclient"|name="jack"|number=3)";
-                //client->sendMessage(cmd2, /*autoFlush=*/true);
+            //const std::string cmd2 =
+            //    R"(O|I="test3"|T="rawclient"|name="jack"|number=3)";
+            //client->sendMessage(cmd2, /*autoFlush=*/true);
 
-                //  const std::string cmd3 =
-                //    R"(D|I="test3"|T="rawclient")";
-                //client->sendMessage(cmd3, /*autoFlush=*/true);
+            //  const std::string cmd3 =
+            //    R"(D|I="test3"|T="rawclient")";
+            //client->sendMessage(cmd3, /*autoFlush=*/true);
 
 
-                client->startMessage('C', false, false)
-                    .addMessageParamString("I", "bst")
-                    .addMessageParamString("N", "2nd Bust Every Order")
-                    .addMessageParamString("H", "busts all orders")
-                    .addMessageParamInt("L", 2)
-                    .sendMessageAndFlush();
-                //std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                client->startMessage('O', false, false)
-                    .addMessageParamString("I", "test3")
-                    .addMessageParamString("T", "rawclient")
-                    .addMessageParamString("name", "jack")
-                    .addMessageParamInt("number", 3)
-                    .sendMessageAndFlush();
-                //std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                client->startMessage('D', false, false)
-                    .addMessageParamString("I", "test3")
-                    .addMessageParamString("T", "rawclient")
-                    .sendMessageAndFlush();
-                //std::this_thread::sleep_for(std::chrono::milliseconds(10));
-                client->startMessage('O', false, true)
-                    .addMessageParamString("I", "test_chain")
-                    .addMessageParamString("T", "rawclient")
-                    .addMessageParamString("name", "superman")
-                    .addMessageParamInt("number", 1)
-                    .sendMessageAndFlush();
-                    //.sendMessage();
-                }).detach();
+            client->startMessage('C', false, false)
+                .addMessageParamString("I", "bst")
+                .addMessageParamString("N", "2nd Bust Every Order")
+                .addMessageParamString("H", "busts all orders")
+                .addMessageParamInt("L", 2)
+                .sendMessageAndFlush();
+            //std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            client->startMessage('O', false, false)
+                .addMessageParamString("I", "test3")
+                .addMessageParamString("T", "rawclient")
+                .addMessageParamString("name", "jack")
+                .addMessageParamInt("number", 3)
+                .sendMessageAndFlush();
+            //std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            client->startMessage('D', false, false)
+                .addMessageParamString("I", "test3")
+                .addMessageParamString("T", "rawclient")
+                .sendMessageAndFlush();
+            //std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            client->startMessage('O', false, true)
+                .addMessageParamString("I", "test_chain")
+                .addMessageParamString("T", "rawclient")
+                .addMessageParamString("name", "superman")
+                .addMessageParamInt("number", 1)
+                .sendMessageAndFlush();
+                //.sendMessage();
+
         }
         catch (const std::exception& ex) {
             std::cerr << "[Exception@onLoggedIn] " << ex.what() << std::endl;
@@ -100,7 +100,7 @@ public:
         int status,
         const std::string& message) override {
         try {
-            // 1. 毫秒时间戳 → 本地可读时间
+           
             auto tp = std::chrono::system_clock::time_point{ std::chrono::milliseconds(ts) };
             std::time_t tt = std::chrono::system_clock::to_time_t(tp);
             std::tm local_tm;
@@ -113,7 +113,7 @@ public:
             std::ostringstream timeBuf;
             timeBuf << std::put_time(&local_tm, "%Y-%m-%d %H:%M:%S");
 
-            // 2. 基本信息
+     
             std::lock_guard lk(coutMutex);
             std::cout << "[Listener] MessageReceived\n"
                 << "  Timestamp: " << timeBuf.str()
@@ -122,10 +122,10 @@ public:
                 << "  Status:    " << status << "\n"
                 << "  Length:    " << message.size() << " bytes\n";
 
-            // 3. 原始内容
+       
             std::cout << "  Raw Msg:   \"" << message << "\"\n";
 
-            // 4. 可视化转义
+          
             std::cout << "  Escaped:   \"";
             for (char c : message) {
                 switch (c) {
@@ -137,7 +137,7 @@ public:
             }
             std::cout << "\"\n";
 
-            // 5. 如果像 JSON，就尝试解析并 pretty-print
+      
             if (!message.empty() && message.front() == '{' && message.back() == '}') {
                 try {
                     auto j = nlohmann::json::parse(message);

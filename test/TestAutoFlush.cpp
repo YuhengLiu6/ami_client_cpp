@@ -80,8 +80,8 @@ public:
     }
 
     void onMessageReceived(AmiClient* client,
-        long long timestamp,
-        long long seqNum,
+        long timestamp,
+        long seqNum,
         int status,
         const std::string& message) override {
         std::lock_guard<std::mutex> lk(coutMutex);

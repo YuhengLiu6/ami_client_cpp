@@ -18,8 +18,8 @@ public:
     virtual void onDisconnect(AmiClient* client) = 0;
     virtual void onLoggedIn(AmiClient* client) = 0;
     virtual void onMessageReceived(AmiClient* client,
-        long long timestamp,
-        long long seqNum,
+        long timestamp,
+        long seqNum,
         int status,
         const std::string& message) = 0;
     virtual void onMessageSent(AmiClient* client,
