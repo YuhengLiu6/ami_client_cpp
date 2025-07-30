@@ -34,19 +34,7 @@ public:
             std::this_thread::sleep_for(std::chrono::milliseconds(1000));
         }
 
-        //int counter = 0;
-        //while (counter < 20) {
-        //    // 构造一个不断变换 ID 和 name 的对象消息
-        //    client
-        //        ->startObjectMessage("demoType", "demoId" + std::to_string(counter))
-        //        .addMessageParamString("name", "Bob_" + std::to_string(counter))
-        //        .addMessageParamInt("age", 20 + (counter % 10))
-        //        .sendMessageAndFlush();
 
-        //    // 每隔 1 秒发一条
-        //    //std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        //    ++counter;
-        //}
 
         AmiClientCommandDef def("sample_cmd_def");
         def.setConditions({ AmiClientCommandDef::CONDITION_USER_CLICK })
