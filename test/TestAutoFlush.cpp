@@ -121,7 +121,7 @@ int main(int argc, char* argv[]) {
     }
 
     //int opts = AmiClient::ENABLE_AUTO_FLUSH_OUTGOING | AmiClient::LOG_MESSAGES;
-    int opts = AmiClient::ENABLE_AUTO_PROCESS_INCOMING | AmiClient::ENABLE_AUTO_FLUSH_OUTGOING | AmiClient::ENABLE_SEND_TIMESTAMPS | AmiClient::ENABLE_SEND_SEQNUM | AmiClient::LOG_MESSAGES;
+    int opts = AmiClient::ENABLE_AUTO_PROCESS_INCOMING | AmiClient::ENABLE_AUTO_FLUSH_OUTGOING | AmiClient::ENABLE_SEND_TIMESTAMPS | AmiClient::ENABLE_SEND_SEQNUM;
     //int opts = AmiClient::ENABLE_AUTO_PROCESS_INCOMING | AmiClient::ENABLE_AUTO_FLUSH_OUTGOING | AmiClient::LOG_MESSAGES;
     //int opts = AmiClient::ENABLE_AUTO_PROCESS_INCOMING;
 
