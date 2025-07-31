@@ -5,16 +5,15 @@
 1. **Specify different login ID for each client**  
 2. **Declare client instance and listener instance** to handle callbacks  
 3. **Set options:**
+ `ENABLE_AUTO_PROCESS_INCOMING` | By default, this client will automatically read inbound messages and process them in a separate thread. If disabled, you must manually call `pumpIncomingEvent()`. 
+ `ENABLE_QUIET`                 | Same as setting `O="QUIET"`, which tells the AMI relay not to send message acks back to this client. 
+ `DISABLE_AUTO_RECONNECT`      | By default, this client will keep trying to reconnect to the AMI server. See `setAutoReconnectFrequencyMs(long)` for details. 
+ `ENABLE_SEND_TIMESTAMPS`      | Should this client send timestamps. Useful for enabling delayed message detection from the AMI client. 
+ `ENABLE_SEND_SEQNUM`          | Should this client send sequence numbers. Useful for linking a particular client message to the message in AMI server. 
+ `LOG_CONNECTION_RETRY_ERRORS` | Should this client log errors each time a connection retry fails. If not set, only logs on the first connection failure. 
+ `LOG_MESSAGES`                | If set, all messages will be logged using the standard `java.util.logging.Logger` framework. 
+ `ENABLE_AUTO_FLUSH_OUTGOING`  | If set, a separate thread is started which will automatically flush messages as they are written. 
   ```cpp
-  ENABLE_AUTO_PROCESS_INCOMING  
-  ENABLE_QUIET  
-  DISABLE_AUTO_RECONNECT  
-  ENABLE_SEND_SEQNUM  
-  ENABLE_SEND_TIMESTAMPS  
-  LOG_CONNECTION_RETRY_ERRORS  
-  LOG_MESSAGES  
-  ENABLE_AUTO_FLUSH_OUTGOING
-
   int opts = AmiClient::ENABLE_AUTO_PROCESS_INCOMING
   | AmiClient::ENABLE_AUTO_FLUSH_OUTGOING
   | AmiClient::ENABLE_SEND_SEQNUM
