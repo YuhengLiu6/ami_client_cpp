@@ -14,7 +14,7 @@ extern std::mutex coutMutex;
 class MyAmiListener : public AmiClientListener {
 public:
     void onConnect(AmiClient* client) override {
-        //std::lock_guard<std::mutex> lk(coutMutex);
+
         std::cout << "[Listener] Connected to server." << std::endl;
     }
 
@@ -24,14 +24,14 @@ public:
         std::cout << "[Listener] Logged in successfully." << std::endl;
         int ctr = 0;
         while (ctr < 20) {
-            client->startObjectMessage("javaclienttest", "1")
+            client->startObjectMessage("clienttest", "1")
                 .addMessageParamString("I", "bst_"+ std::to_string(ctr))
                 .addMessageParamString("name", "From_C++" + std::to_string(ctr))
                 .addMessageParamInt("age", ctr)
                 .sendMessageAndFlush();
             ctr++;
 
-            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+            std::this_thread::sleep_for(std::chrono::milliseconds(500));
         }
 
 
@@ -46,7 +46,7 @@ public:
     }
 
     void onDisconnect(AmiClient* client) override {
-        std::lock_guard<std::mutex> lk(coutMutex);
+
         std::cout << "[Listener] Disconnected from server." << std::endl;
     }
 
@@ -55,7 +55,7 @@ public:
         long seqNum,
         int status,
         const std::string& message) override {
-        std::lock_guard<std::mutex> lk(coutMutex);
+
  
         std::cout << "[Listener] MessageReceived: seq=" << seqNum
             << " status=" << status
@@ -64,7 +64,7 @@ public:
 
     void onMessageSent(AmiClient* client,
         const std::string& message) override {
-        std::lock_guard<std::mutex> lk(coutMutex);
+
         std::cout << "[Listener] MessageSent:" << message << std::endl;
     }
 

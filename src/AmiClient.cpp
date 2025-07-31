@@ -113,17 +113,16 @@ void AmiClient::runnerLoop_() {
                 }
             }
             else {
-                // wait until notify (onConnect)
+           
                 std::unique_lock<std::mutex> lk(runnerMutex_);
                 runnerCv_.wait(lk, [&]() { return !running_.load() || rawClient_.isConnected(); });
             }
         }
         // 2) Process incoming if enabled
         if (autoProcessIncoming_ && rawClient_.isConnected()) {
-            // loop pump until disconnect
+
             while (running_.load() && rawClient_.pumpIncomingEvent()) {
             }
-            // disconnected or error
             rawClient_.disconnect();
         }
         // 3) Sleep briefly to avoid busy spin when neither mode
@@ -131,7 +130,7 @@ void AmiClient::runnerLoop_() {
             std::this_thread::sleep_for(std::chrono::seconds(1));
         }
     }
-    // Clean up
+
     if (rawClient_.isConnected()) rawClient_.disconnect();
 }
 

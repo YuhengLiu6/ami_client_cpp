@@ -15,7 +15,8 @@ find_package(nlohmann_json CONFIG REQUIRED)
 message(STATUS "Boost_INCLUDE_DIRS = ${Boost_INCLUDE_DIRS}")
 message(STATUS "Boost_LIBRARIES    = ${Boost_LIBRARIES}")
 
-file(GLOB_RECURSE SOURCES "src/*.cpp" "test/TestMultiClient.cpp")
+
+file(GLOB_RECURSE SOURCES "src/*.cpp" "test/TestMsgType.cpp")
 
 
 add_executable(${COMPILED_NAME} ${SOURCES})

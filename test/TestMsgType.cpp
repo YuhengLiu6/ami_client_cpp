@@ -1,251 +1,117 @@
-﻿// TestRawAmiClient.cpp
-#include "../src/RawAmiClient.hpp"
-#include "../src/RawAmiClientListener.hpp"
+﻿#include "../src/AmiClient.hpp"
+#include "../src/AmiClientListener.hpp"
 #include "../src/AmiTypes.hpp"
-#include <variant>
+#include "../src/AmiClientCommandDef.hpp"
 #include <iostream>
 #include <memory>
 #include <thread>
 #include <chrono>
-#include <iomanip>    // for std::setw
-#include <exception>
+#include <mutex>
+#include <iomanip>
+
 extern std::mutex coutMutex;
 
-class MyListener : public RawAmiClientListener {
+class MyAmiListener : public AmiClientListener {
 public:
-
-    void onLoggedIn(RawAmiClient* client) override {
-        try {
-            std::cout << "[Listener] LoggedIn." << std::endl;
-
-       
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            //const std::string cmd1 =
-            //    R"(C|I="bst"|N="2nd Bust Every Order"|H="busts all orders"|L=2)";
-            //client->sendMessage(cmd1, /*autoFlush=*/true);
-
-
-            //const std::string cmd2 =
-            //    R"(O|I="test3"|T="rawclient"|name="jack"|number=3)";
-            //client->sendMessage(cmd2, /*autoFlush=*/true);
-
-            //  const std::string cmd3 =
-            //    R"(D|I="test3"|T="rawclient")";
-            //client->sendMessage(cmd3, /*autoFlush=*/true);
-
-
-            client->startMessage('C', false, false)
-                .addMessageParamString("I", "bst")
-                .addMessageParamString("N", "2nd Bust Every Order")
-                .addMessageParamString("H", "busts all orders")
-                .addMessageParamInt("L", 2)
-                .sendMessageAndFlush();
-            //std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            client->startMessage('O', false, false)
-                .addMessageParamString("I", "test3")
-                .addMessageParamString("T", "rawclient")
-                .addMessageParamString("name", "jack")
-                .addMessageParamInt("number", 3)
-                .sendMessageAndFlush();
-            //std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            client->startMessage('D', false, false)
-                .addMessageParamString("I", "test3")
-                .addMessageParamString("T", "rawclient")
-                .sendMessageAndFlush();
-            //std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            client->startMessage('O', false, true)
-                .addMessageParamString("I", "test_chain")
-                .addMessageParamString("T", "rawclient")
-                .addMessageParamString("name", "superman")
-                .addMessageParamInt("number", 1)
-                .sendMessageAndFlush();
-                //.sendMessage();
-
-        }
-        catch (const std::exception& ex) {
-            std::cerr << "[Exception@onLoggedIn] " << ex.what() << std::endl;
-        }
+    void onConnect(AmiClient* client) override {
+        std::cout << "[Listener] Connected to server." << std::endl;
     }
 
+    void onLoggedIn(AmiClient* client) override {
+        std::cout << "[Listener] Logged in. Sending test messages..." << std::endl;
 
-    void onConnect(RawAmiClient* client) override {
-        try {
-            std::lock_guard lk(coutMutex);
-            std::cout << "[Listener] Connected to server." << std::endl;
-            std::thread([client]() {
-                std::this_thread::sleep_for(std::chrono::milliseconds(10));
-                client->sendMessage(R"(L|I="demo")", true);
+        // 1) Send an object creation message
+        
+        client->startObjectMessage("cmdtest", "test1")
+            .addMessageParamString("name", "jack")
+            .addMessageParamInt("number", 3)
+            .sendMessageAndFlush();
 
-                //client->sendMessage(R"(O|I="test1"|T="rawclient"|name="michael"|number=1)", true);
+        client->startObjectMessage("cmdtest", "test2")
+            .addMessageParamString("name", "mike")
+            .addMessageParamInt("number", 4)
+            .sendMessageAndFlush();
 
-                }).detach();
-        }
-        catch (const std::exception& ex) {
-            std::cerr << "[Exception@onConnect] " << ex.what() << std::endl;
-        }
+        // 2) Send a delete message
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        client->startDeleteMessage("cmdtest", "test1")
+            .sendMessageAndFlush();
+
+        // 3) Send a command definition
+        client->startCommandDefinition("bst")
+            .addMessageParamString("N", "2nd Bust Every Order")
+            .addMessageParamString("H", "busts all orders")
+            .addMessageParamInt("L", 2)
+            .sendMessageAndFlush();
     }
 
-    void onDisconnect(RawAmiClient* client) override {
-        try {
-            std::cout << "[Listener] Disconnected from server." << std::endl;
-        }
-        catch (const std::exception& ex) {
-            std::cerr << "[Exception@onDisconnect] " << ex.what() << std::endl;
-        }
+    void onDisconnect(AmiClient* /*client*/) override {
+        std::cout << "[Listener] Disconnected from server." << std::endl;
     }
 
-    void onMessageReceived(RawAmiClient* client,
-        long long ts,
-        long seqNum,
+    void onMessageReceived(AmiClient* /*client*/,
+        long ts,
+        long seq,
         int status,
         const std::string& message) override {
-        try {
-           
-            auto tp = std::chrono::system_clock::time_point{ std::chrono::milliseconds(ts) };
-            std::time_t tt = std::chrono::system_clock::to_time_t(tp);
-            std::tm local_tm;
-#ifdef _WIN32
-            localtime_s(&local_tm, &tt);
-#else
-            localtime_r(&tt, &local_tm);
-#endif
-
-            std::ostringstream timeBuf;
-            timeBuf << std::put_time(&local_tm, "%Y-%m-%d %H:%M:%S");
-
-     
-            std::lock_guard lk(coutMutex);
-            std::cout << "[Listener] MessageReceived\n"
-                << "  Timestamp: " << timeBuf.str()
-                << "  (ms since epoch: " << ts << ")\n"
-                << "  SeqNum:    " << seqNum << "\n"
-                << "  Status:    " << status << "\n"
-                << "  Length:    " << message.size() << " bytes\n";
-
-       
-            std::cout << "  Raw Msg:   \"" << message << "\"\n";
-
-          
-            std::cout << "  Escaped:   \"";
-            for (char c : message) {
-                switch (c) {
-                case '\n': std::cout << "\\n"; break;
-                case '\r': std::cout << "\\r"; break;
-                case '\t': std::cout << "\\t"; break;
-                default:   std::cout << c;     break;
-                }
-            }
-            std::cout << "\"\n";
-
-      
-            if (!message.empty() && message.front() == '{' && message.back() == '}') {
-                try {
-                    auto j = nlohmann::json::parse(message);
-                    std::cout << "  Parsed JSON:\n"
-                        << std::setw(4) << j << "\n";
-                }
-                catch (const std::exception& je) {
-                    std::cout << "  [JSON parse error] " << je.what() << "\n";
-                }
-            }
-
-            std::cout << std::endl;
-        }
-        catch (const std::exception& ex) {
-            std::cerr << "[Exception@onMessageReceived] " << ex.what() << std::endl;
-        }
+        std::cout << "[Listener] MessageReceived: seq=" << seq
+            << " status=" << status
+            << " msg=\"" << message << "\"" << std::endl;
     }
 
-
-    void onMessageSent(RawAmiClient* client, const std::string& message) override {
-        try {
-            
-            std::lock_guard lk(coutMutex);
-            std::cout << "[Listener] MessageSent: \"" << message << "\"" << std::endl;
-            
-        }
-        catch (const std::exception& ex) {
-            std::cerr << "[Exception@onMessageSent] " << ex.what() << std::endl;
-        }
+    void onMessageSent(AmiClient* /*client*/, const std::string& msg) override {
+        std::cout << "[Listener] MessageSent: " << msg;
     }
 
-    void onCommand(RawAmiClient* client,
+    void onCommand(AmiClient* source,
         const std::string& requestId,
         const std::string& cmd,
         const std::string& userName,
         const std::string& objectType,
         const std::string& objectId,
         const std::map<std::string, AmiValue>& params) override {
-        try {
-            std::cout << "[Listener] Command:\n"
-                << "  id=" << requestId << "\n"
-                << "  cmd=" << cmd << "\n"
-                << "  user=" << userName << "\n"
-                << "  type=" << objectType << "\n"
-                << "  obj=" << objectId << "\n"
-                << "  params={\n";
-            for (const auto& kv : params) {
-                std::cout << "    " << std::setw(12) << kv.first << ": ";
-                try {
-                    std::visit([](auto&& val) {
-                        using T = std::decay_t<decltype(val)>;
-                        if constexpr (std::is_same_v<T, std::nullptr_t>) {
-                            std::cout << "null";
-                        }
-                        else if constexpr (std::is_same_v<T, std::vector<uint8_t>>) {
-                            std::cout << "[binary " << val.size() << " bytes]";
-                        }
-                        else if constexpr (std::is_same_v<T, nlohmann::json>) {
-                            std::cout << val.dump();
-                        }
-                        else {
-                            std::cout << val;
-                        }
-                        }, kv.second);
-                }
-                catch (const std::exception& ex2) {
-                    std::cout << "[Error during visit: " << ex2.what() << "]";
-                }
-                std::cout << "\n";
-            }
-            std::cout << "  }" << std::endl;
-        }
-        catch (const std::exception& ex) {
-            std::cerr << "[Exception@onCommand] " << ex.what() << std::endl;
-        }
+  
+        std::cout << "[Listener] Command received: id=" << requestId << " cmd=" << cmd << std::endl;
+
+        source->startResponseMessage(requestId, 0, "Processed")
+            .addMessageParamLong("callback_code", 123)
+            .sendMessageAndFlush();
     }
-
-
 };
 
 int main(int argc, char* argv[]) {
-    std::string host = RawAmiClient::DEFAULT_HOST;
-    int port = RawAmiClient::DEFAULT_PORT;
+    std::string host = AmiClient::DEFAULT_HOST;
+    int port = AmiClient::DEFAULT_PORT;
+    std::string loginId = "demo";
+
     if (argc > 1) host = argv[1];
     if (argc > 2) port = std::stoi(argv[2]);
+    if (argc > 3) loginId = argv[3];
 
-    auto client = std::make_shared<RawAmiClient>();
-    auto listener = std::make_shared<MyListener>();
+    auto client = AmiClient::create();
+    auto listener = std::make_shared<MyAmiListener>();
     client->addListener(listener);
 
-    std::cout << "[Main] Connecting to " << host << ":" << port << " ..." << std::endl;
-
-    try {
-        if (!client->connect(host, port, true, false)) {
-            std::cerr << "[Main] Failed to connect." << std::endl;
-            return 1;
-        }
-
-        //std::cout << "This is cuurent connected_:  " << client->isConnected() << " before while loop" << std::endl;
-        while (client->isConnected()) {
-            //std::cout << "This is cuurent connected_:  " << client->isConnected() << " inside loop" << std::endl;
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-        }
-
+    {
+        std::lock_guard<std::mutex> lk(coutMutex);
+        std::cout << "[Main] Starting AmiClient to " << host << ":" << port
+            << " with loginId=\"" << loginId << "\"..." << std::endl;
     }
-    catch (const std::exception& ex) {
-        std::cerr << "[Main Exception] " << ex.what() << std::endl;
-        return 2;
+
+
+    int opts = AmiClient::ENABLE_AUTO_PROCESS_INCOMING
+        | AmiClient::ENABLE_AUTO_FLUSH_OUTGOING
+        | AmiClient::ENABLE_SEND_SEQNUM
+        | AmiClient::ENABLE_SEND_TIMESTAMPS;
+
+    if (!client->start(host, port, loginId, opts)) {
+        std::cerr << "[Main] Failed to start AmiClient." << std::endl;
+        return 1;
+    }
+
+
+    while (client->isConnected()) {
+        std::this_thread::sleep_for(std::chrono::seconds(1));
     }
 
     std::cout << "[Main] Exiting test." << std::endl;

@@ -584,58 +584,6 @@ bool RawAmiClient::sendMessage(const std::string& msg, bool flush) {
 
 
 
-RawAmiClient& RawAmiClient::flush(bool clearAfterSend) {
-    assertConnected();
-    if (clearAfterSend) {
-        // Always flush immediately, regardless of autoFlush_ setting
-        std::string buf;
-        {
-            std::lock_guard lk(writeMutex_);
-            buf.swap(outBuffer_);
-        }
-        // Ensure newline termination
-        if (buf.empty() || buf.back() != '\n') buf += '\n';
-        boost::asio::write(*socket_, boost::asio::buffer(buf));
-
-        fireMessageSent(buf);
-
-        needsFlush_ = false;
-        isInSend_ = false;
-        return *this;
-    }
-    else if (!autoFlush_) {
-        // Manual flush mode: flush immediately if autoFlush is disabled
-        std::string buf;
-        {
-            std::lock_guard lk(writeMutex_);
-            buf.swap(outBuffer_);
-        }
-        if (buf.empty() || buf.back() != '\n')
-            buf += '\n';
-
-        boost::asio::write(*socket_, boost::asio::buffer(buf));
-        fireMessageSent(buf);
-        if (debug_) {
-            std::lock_guard lk(coutMutex);
-            std::cout << "[flush] wrote: " << buf << std::endl;
-        }
-        needsFlush_ = false;
-    }
-    else {
-        // In auto-flush mode: just signal the flush thread to flush soon
-        std::unique_lock lk(flushMutex_);
-        needsFlush_ = true;
-        flushCv_.notify_one();
-    }
-
-    if (clearAfterSend) {
-        std::lock_guard lk(writeMutex_);
-        outBuffer_.clear();
-    }
-    return *this;
-}
-
-
 
 RawAmiClient& RawAmiClient::sendMessage() {
     assertConnected();
@@ -708,6 +656,57 @@ RawAmiClient& RawAmiClient::sendMessageAndFlush() {
         batchBuffer_.clear();
     }
 
+    return *this;
+}
+
+RawAmiClient& RawAmiClient::flush(bool clearAfterSend) {
+    assertConnected();
+    if (clearAfterSend) {
+        // Always flush immediately, regardless of autoFlush_ setting
+        std::string buf;
+        {
+            std::lock_guard lk(writeMutex_);
+            buf.swap(outBuffer_);
+        }
+        // Ensure newline termination
+        if (buf.empty() || buf.back() != '\n') buf += '\n';
+        boost::asio::write(*socket_, boost::asio::buffer(buf));
+
+        fireMessageSent(buf);
+
+        needsFlush_ = false;
+        isInSend_ = false;
+        return *this;
+    }
+    else if (!autoFlush_) {
+        // Manual flush mode: flush immediately if autoFlush is disabled
+        std::string buf;
+        {
+            std::lock_guard lk(writeMutex_);
+            buf.swap(outBuffer_);
+        }
+        if (buf.empty() || buf.back() != '\n')
+            buf += '\n';
+
+        boost::asio::write(*socket_, boost::asio::buffer(buf));
+        fireMessageSent(buf);
+        if (debug_) {
+            std::lock_guard lk(coutMutex);
+            std::cout << "[flush] wrote: " << buf << std::endl;
+        }
+        needsFlush_ = false;
+    }
+    else {
+        // In auto-flush mode: just signal the flush thread to flush soon
+        std::unique_lock lk(flushMutex_);
+        needsFlush_ = true;
+        flushCv_.notify_one();
+    }
+
+    //if (clearAfterSend) {
+    //    std::lock_guard lk(writeMutex_);
+    //    outBuffer_.clear();
+    //}
     return *this;
 }
 
