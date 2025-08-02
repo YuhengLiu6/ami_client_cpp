@@ -3,6 +3,7 @@
 #define RAW_AMI_CLIENT_HPP
 
 #include <boost/asio.hpp>
+#include <boost/asio/ssl.hpp>
 #include <atomic>
 #include <string>
 #include <vector>
@@ -20,18 +21,96 @@ extern std::mutex g_logMutex;
 extern std::mutex coutMutex;
 class RawAmiClientListener;
 
+class SocketBase
+{
+public:
+    virtual ~SocketBase() = default;
+
+    explicit SocketBase(boost::asio::io_context & io_context)
+        : io_context_(io_context)
+    {
+    }
+
+    virtual void connect(const std::string& host, const std::string& port) = 0;
+    virtual void disconnect() = 0;
+    virtual void send_message(const std::string& message) = 0;
+    virtual std::size_t read_until(boost::asio::streambuf & buf, char delim) = 0;
+    virtual char read_char(boost::system::error_code & ec) = 0;
+
+protected:
+    boost::asio::io_context & io_context_;
+};
+
+class TcpSocket final : public SocketBase
+{
+    using super = SocketBase;
+
+public:
+    explicit TcpSocket(boost::asio::io_context & io_context)
+        : super(io_context)
+        , socket_(io_context)
+    {
+    }
+
+    void connect(const std::string& host, const std::string& port) override;
+    void disconnect() override;
+    void send_message(const std::string& message) override;
+    std::size_t read_until(boost::asio::streambuf & buf, char delim) override;
+    char read_char(boost::system::error_code & ec) override;
+
+private:
+    boost::asio::ip::tcp::socket socket_;
+};
+
+class SslSocket final : public SocketBase
+{
+    using super = SocketBase;
+
+public:
+    using ssl_socket = boost::asio::ssl::stream<boost::asio::ip::tcp::socket>;
+
+    SslSocket(
+            boost::asio::io_context & io_context,
+            std::string server_certificate_public_key_file,
+            std::string client_certificate_public_key_file,
+            std::string client_certificate_private_key_file
+        );
+
+    void connect(const std::string& host, const std::string& port) override;
+    void disconnect() override;
+    void send_message(const std::string& message) override;
+    std::size_t read_until(boost::asio::streambuf & buf, char delim) override;
+    char read_char(boost::system::error_code & ec) override;
+
+private:
+    bool verify_certificate(bool preverified, boost::asio::ssl::verify_context& ctx);
+
+private:
+    boost::asio::ssl::context ssl_context_;
+    std::unique_ptr<ssl_socket> ssl_socket_;
+    std::string host_; // store for SSL verification
+    std::string server_certificate_public_key_file_;
+    std::string client_certificate_public_key_file_;
+    std::string client_certificate_private_key_file_;
+};
+
 class RawAmiClient {
 public:
     static const std::string DEFAULT_HOST;
     static const int DEFAULT_PORT;
 
-    RawAmiClient();
+    RawAmiClient() = default;
+
     ~RawAmiClient();
 
-    bool connect(const std::string& host = DEFAULT_HOST,
-        int port = DEFAULT_PORT,
-        bool logErrorOnRetries = true,
-        bool autoFlush = false);
+    bool connect(
+            const std::string& host = DEFAULT_HOST,
+            int port = DEFAULT_PORT,
+            bool logErrorOnRetries = true,
+            bool autoFlush = false,
+            std::string server_certificate_public_key_file = {},
+            std::string client_certificate_public_key_file = {},
+            std::string client_certificate_private_key_file = {});
     void disconnect();
 
 
@@ -119,13 +198,12 @@ private:
 
     std::mutex seqnumMutex_;
     boost::asio::io_context ioCtx_;
-    std::unique_ptr<boost::asio::ip::tcp::socket> socket_;
     std::thread readerThread_;
-    std::atomic<bool> connected_;
-    std::atomic<bool> receiving_;
-    std::atomic<bool> sending_;
-    std::atomic<bool> loggedIn_;
-    std::atomic<bool> needsFlush_;
+    std::atomic<bool> connected_{false};
+    std::atomic<bool> receiving_{false};
+    std::atomic<bool> sending_{false};
+    std::atomic<bool> loggedIn_{false};
+    std::atomic<bool> needsFlush_{false};
 
     std::thread              autoFlushThread_;
     std::atomic<bool>        stopAutoFlush_{ false };
@@ -140,8 +218,8 @@ private:
     std::mutex listenersMutex_;
     std::vector<std::shared_ptr<RawAmiClientListener>> listeners_;
 
-    long seqnum_;
-    bool autoFlush_;
+    long seqnum_{0};
+    bool autoFlush_{false};
 
     std::mutex writeMutex_;
     friend class AmiClient;
@@ -152,6 +230,8 @@ private:
 
 
     std::string batchBuffer_;
+
+    std::unique_ptr<SocketBase> socket_;
 };
 
 #endif // RAW_AMI_CLIENT_HPP

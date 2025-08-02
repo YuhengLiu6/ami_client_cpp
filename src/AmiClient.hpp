@@ -43,7 +43,14 @@ public:
     ~AmiClient() override;
 
 
-    bool start(const std::string& host, int port, const std::string& loginId, int options);
+    bool start(
+            const std::string& host,
+            int port,
+            const std::string& loginId,
+            int options,
+            std::string server_certificate_public_key_file = {},
+            std::string client_certificate_public_key_file = {},
+            std::string client_certificate_private_key_file = {});
 
     void close();
 

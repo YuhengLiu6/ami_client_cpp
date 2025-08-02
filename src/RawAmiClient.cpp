@@ -2,6 +2,8 @@
 #include "RawAmiClient.hpp"
 #include "RawAmiClientListener.hpp"
 #include <boost/asio.hpp>
+#include <boost/asio/ssl/host_name_verification.hpp>
+#include <boost/asio/ssl/verify_mode.hpp>
 #include <iostream>
 #include <chrono>
 #include <algorithm>
@@ -18,8 +20,137 @@
 #include <bitset>
 #include <nlohmann/json.hpp> 
 #include <boost/beast/core/detail/base64.hpp>
+#include <boost/bind/bind.hpp>
 #include <cppcodec/base64_rfc4648.hpp>
 #include "AmiTypes.hpp"
+
+
+void TcpSocket::connect(const std::string & host, const std::string & port)
+{
+    boost::asio::ip::tcp::resolver resolver(io_context_);
+    auto endpoints = resolver.resolve(host, port);
+    boost::asio::connect(socket_, endpoints);
+}
+
+void TcpSocket::disconnect()
+{
+    if (socket_.is_open()) {
+        boost::system::error_code ec;
+        socket_.shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
+        socket_.close(ec);
+    }
+}
+
+void TcpSocket::send_message(const std::string & message)
+{
+    if (socket_.is_open()) {
+        boost::asio::write(socket_, boost::asio::buffer(message));
+    }
+}
+
+std::size_t TcpSocket::read_until(boost::asio::streambuf & buf, const char delim)
+{
+    return boost::asio::read_until(socket_, buf, delim);
+}
+
+char TcpSocket::read_char(boost::system::error_code & ec)
+{
+    char c = 0;
+    boost::asio::read(socket_, boost::asio::buffer(&c, 1), ec);
+    return c;
+}
+
+SslSocket::SslSocket(
+        boost::asio::io_context & io_context,
+        std::string server_certificate_public_key_file,
+        std::string client_certificate_public_key_file,
+        std::string client_certificate_private_key_file)
+    : super(io_context)
+    , ssl_context_(boost::asio::ssl::context::tlsv12_client)
+    , server_certificate_public_key_file_(std::move(server_certificate_public_key_file))
+    , client_certificate_public_key_file_(std::move(client_certificate_public_key_file))
+    , client_certificate_private_key_file_(std::move(client_certificate_private_key_file))
+{
+  if (!server_certificate_public_key_file.empty()) {
+    boost::system::error_code ec;
+    const auto r =
+        ssl_context_.load_verify_file(server_certificate_public_key_file_, ec);
+    if (r.failed()) {
+      std::string error = "failed to load and verify kestore file: ";
+      error.append(server_certificate_public_key_file_)
+          .append(": ")
+          .append(r.message());
+      throw std::runtime_error(error);
+    }
+  }
+}
+
+void SslSocket::connect(const std::string & host, const std::string & port)
+{
+    host_ = host; // keep for SSL verification
+
+    if (!client_certificate_private_key_file_.empty()) {
+        ssl_context_.use_certificate_file(client_certificate_public_key_file_, boost::asio::ssl::context::pem);
+    }
+    if (!client_certificate_private_key_file_.empty()) {
+        ssl_context_.use_private_key_file(client_certificate_private_key_file_, boost::asio::ssl::context::pem);
+    }
+    ssl_context_.set_verify_mode(boost::asio::ssl::verify_peer);
+    ssl_context_.set_verify_callback(
+            boost::bind(&SslSocket::verify_certificate, this,
+            boost::placeholders::_1, boost::placeholders::_2));
+
+    ssl_socket_ = std::make_unique<ssl_socket>(io_context_, ssl_context_);
+
+    boost::asio::ip::tcp::resolver resolver(io_context_);
+    auto endpoints = resolver.resolve(host, port);
+    boost::asio::connect(ssl_socket_->lowest_layer(), endpoints);
+    try {
+        ssl_socket_->handshake(boost::asio::ssl::stream_base::client);
+        std::cout << "ssl: handshake performed successfully" << std::endl;
+    } catch (boost::system::system_error & e) {
+        std::cerr << "error in ssl handshake: " << e.what() << std::endl;
+    }
+}
+
+void SslSocket::disconnect()
+{
+    if (ssl_socket_ && ssl_socket_->lowest_layer().is_open()) {
+        boost::system::error_code ec;
+        ssl_socket_->lowest_layer().shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
+        ssl_socket_->lowest_layer().close(ec);
+    }
+}
+
+void SslSocket::send_message(const std::string & message)
+{
+    if (ssl_socket_ && ssl_socket_->lowest_layer().is_open()) {
+        boost::asio::write(*ssl_socket_, boost::asio::buffer(message));
+    }
+}
+
+std::size_t SslSocket::read_until(boost::asio::streambuf & buf, const char delim)
+{
+    return boost::asio::read_until(*ssl_socket_, buf, delim);
+}
+
+char SslSocket::read_char(boost::system::error_code & ec)
+{
+    char c = 0;
+    boost::asio::read(*ssl_socket_, boost::asio::buffer(&c, 1), ec);
+    return c;
+}
+
+bool SslSocket::verify_certificate(
+        const bool preverified,
+        boost::asio::ssl::verify_context & ctx)
+{
+    char subject_name[256];
+    X509 * cert = X509_STORE_CTX_get_current_cert(ctx.native_handle());
+    X509_NAME_oneline(X509_get_subject_name(cert), subject_name, 256);
+    std::cout << "Verifying certificate: " << subject_name << std::endl;
+    return preverified;
+}
 
 using namespace std::chrono;
 std::mutex coutMutex;
@@ -41,30 +172,37 @@ const std::string RawAmiClient::DEFAULT_HOST = "localhost";
 const int RawAmiClient::DEFAULT_PORT = 3289;
 using base64 = cppcodec::base64_rfc4648;
 using json = nlohmann::json;
-RawAmiClient::RawAmiClient()
-    : socket_(nullptr),
-    connected_(false),
-    receiving_(false),
-    sending_(false),
-    loggedIn_(false),
-    seqnum_(0),
-    autoFlush_(false) {
-}
 
 RawAmiClient::~RawAmiClient() {
     disconnect();
 }
 
-bool RawAmiClient::connect(const std::string& host,
-    int port,
-    bool /*logErrorOnRetries*/,
-    bool autoFlush) {
+bool RawAmiClient::connect(
+        const std::string& host,
+        const int port,
+        const bool /*logErrorOnRetries*/,
+        const bool autoFlush,
+        std::string server_certificate_public_key_file,
+        std::string client_certificate_public_key_file,
+        std::string client_certificate_private_key_file)
+{
     if (connected_) throw std::runtime_error("Already connected");
     try {
-        boost::asio::ip::tcp::resolver resolver(ioCtx_);
-        auto endpoints = resolver.resolve(host, std::to_string(port));
-        socket_ = std::make_unique<boost::asio::ip::tcp::socket>(ioCtx_);
-        boost::asio::connect(*socket_, endpoints);
+        const bool isSsl
+            = !server_certificate_public_key_file.empty()
+            || !client_certificate_public_key_file.empty()
+            || !client_certificate_private_key_file.empty();
+        if(!isSsl) {
+            socket_ = std::make_unique<TcpSocket>(ioCtx_);
+        }
+        else {
+            socket_ = std::make_unique<SslSocket>(
+                    ioCtx_,
+                    server_certificate_public_key_file,
+                    client_certificate_public_key_file,
+                    client_certificate_private_key_file);
+        }
+        socket_->connect(host, std::to_string(port));
 
         {
             std::lock_guard lk(coutMutex);
@@ -102,11 +240,7 @@ void RawAmiClient::disconnect() {
     stopAutoFlush_ = true;
     flushCv_.notify_all();
 
-    if (socket_) {
-        boost::system::error_code ec;
-        socket_->shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
-        socket_->close(ec);
-    }
+    socket_->disconnect();
 
     if (readerThread_.joinable())     readerThread_.join();
     if (autoFlushThread_.joinable())  autoFlushThread_.join();
@@ -136,7 +270,7 @@ void RawAmiClient::startReader() {
         boost::asio::streambuf buf;
         while (connected_) {
             try {
-                auto n = boost::asio::read_until(*socket_, buf, '\n');
+                socket_->read_until(buf, '\n');
                 std::istream is(&buf);
                 std::string line;
 
@@ -452,10 +586,8 @@ bool RawAmiClient::pumpIncomingEvent() {
     inBuffer_.clear();
     try {
         while (connected_) {
-            char c;
             boost::system::error_code ec;
-            boost::asio::read(*socket_, boost::asio::buffer(&c, 1), ec);
-
+            char c = socket_->read_char(ec);
 
             if (ec) {
                 if (ec == boost::asio::error::eof) {
@@ -557,7 +689,7 @@ bool RawAmiClient::sendMessage(const std::string& msg, bool flush) {
             && outBuffer_.size() >= autoFlushBufferSizeThreshold_)
         {
             // Buffer has reached flush threshold — write to socket
-            boost::asio::write(*socket_, boost::asio::buffer(outBuffer_));
+            socket_->send_message(outBuffer_);
             fireMessageSent(outBuffer_);
             outBuffer_.clear();
             needsFlush_ = false;
@@ -572,7 +704,7 @@ bool RawAmiClient::sendMessage(const std::string& msg, bool flush) {
     std::string toWrite = msg;
     if (toWrite.empty() || toWrite.back() != '\n')
         toWrite += '\n';
-    boost::asio::write(*socket_, boost::asio::buffer(toWrite));
+    socket_->send_message(toWrite);
     fireMessageSent(toWrite);
 
     if (debug_) {
@@ -610,7 +742,7 @@ RawAmiClient& RawAmiClient::sendMessage() {
                 << ", threshold = " << autoFlushBufferSizeThreshold_ << std::endl;
         }
         if (batchBuffer_.size() >= autoFlushBufferSizeThreshold_) {
-            boost::asio::write(*socket_, boost::asio::buffer(batchBuffer_));
+            socket_->send_message(batchBuffer_);
             if (debug_) {
                 std::lock_guard lk(coutMutex);
                 std::cout << "[DEBUG-sendMessage] Threshold met, flushing immediately. Message:\n" << batchBuffer_ << std::endl;
@@ -651,7 +783,7 @@ RawAmiClient& RawAmiClient::sendMessageAndFlush() {
     // Immediately write to socket and clear buffer
     {
         std::lock_guard<std::mutex> lk(writeMutex_);
-        boost::asio::write(*socket_, boost::asio::buffer(batchBuffer_));
+        socket_->send_message(batchBuffer_);
         fireMessageSent(batchBuffer_);
         batchBuffer_.clear();
     }
@@ -670,7 +802,7 @@ RawAmiClient& RawAmiClient::flush(bool clearAfterSend) {
         }
         // Ensure newline termination
         if (buf.empty() || buf.back() != '\n') buf += '\n';
-        boost::asio::write(*socket_, boost::asio::buffer(buf));
+        socket_->send_message(buf);
 
         fireMessageSent(buf);
 
@@ -688,7 +820,7 @@ RawAmiClient& RawAmiClient::flush(bool clearAfterSend) {
         if (buf.empty() || buf.back() != '\n')
             buf += '\n';
 
-        boost::asio::write(*socket_, boost::asio::buffer(buf));
+        socket_->send_message(buf);
         fireMessageSent(buf);
         if (debug_) {
             std::lock_guard lk(coutMutex);
@@ -733,7 +865,7 @@ void RawAmiClient::autoFlushLoop() {
             }
             if (!buf.empty() && buf.back() != '\n') buf += '\n';
             try {
-                boost::asio::write(*socket_, boost::asio::buffer(buf));
+                socket_->send_message(buf);
                 fireMessageSent(buf);
             }
             catch (...) {

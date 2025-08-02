@@ -8,10 +8,15 @@ AmiClient::AmiClient()
 
 AmiClient::~AmiClient() { close(); }
 
-bool AmiClient::start(const std::string& host,
-    int port,
-    const std::string& loginId,
-    int options) {
+bool AmiClient::start(
+        const std::string& host,
+        int port,
+        const std::string& loginId,
+        int options,
+        std::string server_certificate_public_key_file,
+        std::string client_certificate_public_key_file,
+        std::string client_certificate_private_key_file)
+{
     host_ = host;
     port_ = port;
     loginId_ = loginId;
@@ -19,7 +24,14 @@ bool AmiClient::start(const std::string& host,
 
     // Synchronous initial connect & login
     bool autoFlush = (options & ENABLE_AUTO_FLUSH_OUTGOING) != 0;
-    if (!rawClient_.connect(host_, port_, logConnectionRetryErrors_, autoFlush)) {
+    if (!rawClient_.connect(
+            host_,
+            port_,
+            logConnectionRetryErrors_,
+            autoFlush,
+            server_certificate_public_key_file,
+            client_certificate_public_key_file,
+            client_certificate_private_key_file)) {
         return false;
     }
     sendLogin_();
