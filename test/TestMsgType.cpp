@@ -88,6 +88,11 @@ int main(int argc, char* argv[]) {
     if (argc > 2) port = std::stoi(argv[2]);
     if (argc > 3) loginId = argv[3];
 
+    std::string server_certificate_public_key_file = (argc > 4) ? argv[4] : "";
+    std::string client_certificate_public_key_file = (argc > 5) ? argv[5] : "";
+    std::string client_certificate_private_key_file = (argc > 6) ? argv[6] : "";
+
+
     auto client = AmiClient::create();
     auto listener = std::make_shared<MyAmiListener>();
     client->addListener(listener);
@@ -104,7 +109,14 @@ int main(int argc, char* argv[]) {
         | AmiClient::ENABLE_SEND_SEQNUM
         | AmiClient::ENABLE_SEND_TIMESTAMPS;
 
-    if (!client->start(host, port, loginId, opts)) {
+    if (!client->start(
+                host,
+                port,
+                loginId,
+                opts,
+                server_certificate_public_key_file,
+                client_certificate_public_key_file,
+                client_certificate_private_key_file)) {
         std::cerr << "[Main] Failed to start AmiClient." << std::endl;
         return 1;
     }
