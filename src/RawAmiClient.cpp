@@ -1,6 +1,9 @@
 ﻿// RawAmiClient.cpp
-#include "RawAmiClient.hpp"
-#include "RawAmiClientListener.hpp"
+#pragma once
+#include <AmiClientCpp/RawAmiClient.hpp>
+#include <AmiClientCpp/RawAmiClientListener.hpp>
+#include <AmiClientCpp/AmiTypes.hpp>
+
 #include <boost/asio.hpp>
 #include <boost/asio/ssl/host_name_verification.hpp>
 #include <boost/asio/ssl/verify_mode.hpp>
@@ -22,9 +25,9 @@
 #include <boost/beast/core/detail/base64.hpp>
 #include <boost/bind/bind.hpp>
 #include <cppcodec/base64_rfc4648.hpp>
-#include "AmiTypes.hpp"
 
 
+namespace ami {
 void TcpSocket::connect(const std::string & host, const std::string & port)
 {
     boost::asio::ip::tcp::resolver resolver(io_context_);
@@ -1240,4 +1243,6 @@ void RawAmiClient::setAutoFlushBufferSizeThreshold(size_t threshold) {
         autoFlushBufferSizeThreshold_ = threshold;
     }
     flushCv_.notify_one();
+}
+
 }

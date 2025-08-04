@@ -1,47 +1,62 @@
 ﻿cmake_minimum_required(VERSION 3.15)
-project(AmiClientCpp)
+project(AmiClientCpp VERSION 1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(THIRDPARTY_INCLUDE_DIRS "${CMAKE_SOURCE_DIR}/thirdparty/usr/local/include")
+# vcpkg toolchain
+set(CMAKE_TOOLCHAIN_FILE "C:/Users/YuhengLiu/vcpkg/scripts/buildsystems/vcpkg.cmake" CACHE STRING "")
+
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
     message(STATUS "Target system is Windows")
-    set(CMAKE_PREFIX_PATH "C:/Users/YuhengLiu/vcpkg/installed/x64-windows")
     set(ASIO "asio")
     set(LIB_BOOST_ASIO "Boost::asio")
-elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    message(STATUS "Target system is Linux")
 else()
     message(FATAL_ERROR "Unsupported OS")
 endif()
+
 
 find_package(Boost REQUIRED CONFIG COMPONENTS ${ASIO} system)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(OpenSSL REQUIRED)
 
-include_directories(
-    ${PROJECT_SOURCE_DIR}
-    ${THIRDPARTY_INCLUDE_DIRS}
+
+file(GLOB_RECURSE LIB_SOURCES CONFIGURE_DEPENDS "src/*.cpp")
+add_library(AmiClientCpp STATIC ${LIB_SOURCES})
+
+target_include_directories(AmiClientCpp
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+        $<INSTALL_INTERFACE:include>
+        ${Boost_INCLUDE_DIRS}
 )
 
-set(COMPILED_NAME "test")
+target_link_libraries(AmiClientCpp
+    PUBLIC
+        ${LIB_BOOST_ASIO}
+        Boost::system
+        OpenSSL::SSL
+        OpenSSL::Crypto
+        nlohmann_json::nlohmann_json
+)
 
-file(GLOB_RECURSE SOURCES "src/*.cpp" "test/TestMsgType.cpp")
-
-add_executable(${COMPILED_NAME} ${SOURCES})
-
-target_link_libraries(${COMPILED_NAME} PRIVATE ${LIB_BOOST_ASIO} Boost::system OpenSSL::SSL OpenSSL::Crypto)
-
-target_include_directories(${COMPILED_NAME} PRIVATE ${Boost_INCLUDE_DIRS})
-
-# Compiler-specific options
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    target_compile_options(${COMPILED_NAME} PRIVATE -Wall -Wextra -O2)
+if(WIN32)
+    target_link_libraries(AmiClientCpp PUBLIC ws2_32 wsock32)
 endif()
 
-# For Windows
-if(WIN32)
-    target_link_libraries(${COMPILED_NAME} ws2_32 wsock32)
+# ======= test =======
+option(AMICLIENTCPP_BUILD_TESTS "Build test executable" ON)
+if(AMICLIENTCPP_BUILD_TESTS)
+    #file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS "test/TestAutoFlush.cpp")
+    #file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS "test/TestAmiClient.cpp")
+    #file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS "test/TestMsgType.cpp")
+    file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS "test/TestMultiClient.cpp")
+    add_executable(test ${TEST_SOURCES})
+    target_link_libraries(test PRIVATE AmiClientCpp)
+    target_include_directories(test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+endif()
+
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(AmiClientCpp PRIVATE -Wall -Wextra -O2)
 endif()
