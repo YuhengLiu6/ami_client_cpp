@@ -32,7 +32,7 @@ namespace ami {
         {
         }
 
-        virtual void connect(const std::string& host, const std::string& port) = 0;
+        virtual bool connect(const std::string& host, const std::string& port) = 0;
         virtual void disconnect() = 0;
         virtual void send_message(const std::string& message) = 0;
         virtual std::size_t read_until(boost::asio::streambuf& buf, char delim) = 0;
@@ -53,7 +53,7 @@ namespace ami {
         {
         }
 
-        void connect(const std::string& host, const std::string& port) override;
+        bool connect(const std::string& host, const std::string& port) override;
         void disconnect() override;
         void send_message(const std::string& message) override;
         std::size_t read_until(boost::asio::streambuf& buf, char delim) override;
@@ -70,6 +70,8 @@ namespace ami {
     public:
         using ssl_socket = boost::asio::ssl::stream<boost::asio::ip::tcp::socket>;
 
+        ~SslSocket() override;
+
         SslSocket(
             boost::asio::io_context& io_context,
             std::string server_certificate_public_key_file,
@@ -77,42 +79,56 @@ namespace ami {
             std::string client_certificate_private_key_file
         );
 
-        void connect(const std::string& host, const std::string& port) override;
-        void disconnect() override;
-        void send_message(const std::string& message) override;
-        std::size_t read_until(boost::asio::streambuf& buf, char delim) override;
-        char read_char(boost::system::error_code& ec) override;
+    SslSocket(
+            boost::asio::io_context & io_context,
+            std::string p12_keystore_file,
+            std::string p12_keystore_pass);
 
-    private:
-        bool verify_certificate(bool preverified, boost::asio::ssl::verify_context& ctx);
+    bool connect(const std::string & host, const std::string & port) override
+    {
+        return connect_using_p12(host, port);
+    }
+    void disconnect() override;
+    void send_message(const std::string& message) override;
+    std::size_t read_until(boost::asio::streambuf & buf, char delim) override;
+    char read_char(boost::system::error_code & ec) override;
 
-    private:
-        boost::asio::ssl::context ssl_context_;
-        std::unique_ptr<ssl_socket> ssl_socket_;
-        std::string host_; // store for SSL verification
-        std::string server_certificate_public_key_file_;
-        std::string client_certificate_public_key_file_;
-        std::string client_certificate_private_key_file_;
-    };
+private:
+    bool verify_certificate(bool preverified, boost::asio::ssl::verify_context& ctx);
 
-    class RawAmiClient {
-    public:
-        static const std::string DEFAULT_HOST;
-        static const int DEFAULT_PORT;
+    bool connect_using_p12(const std::string & host, const std::string & port);
+    bool connect_using_pem_files(const std::string & host, const std::string & port);
 
-        RawAmiClient() = default;
+private:
+    boost::asio::ssl::context ssl_context_;
+    std::unique_ptr<ssl_socket> ssl_socket_;
+    std::string host_; // store for SSL verification
+    STACK_OF(X509) * ca_ = sk_X509_new_null(); // store for SSL verification
+    std::string server_certificate_public_key_file_;
+    std::string client_certificate_public_key_file_;
+    std::string client_certificate_private_key_file_;
 
-        ~RawAmiClient();
+    std::string p12_keystore_file_;
+    std::string p12_keystore_pass_;
+};
 
-        bool connect(
+class RawAmiClient {
+public:
+    static const std::string DEFAULT_HOST;
+    static const int DEFAULT_PORT;
+
+    RawAmiClient() = default;
+
+    ~RawAmiClient();
+
+    bool connect(
             const std::string& host = DEFAULT_HOST,
             int port = DEFAULT_PORT,
             bool logErrorOnRetries = true,
             bool autoFlush = false,
-            std::string server_certificate_public_key_file = {},
-            std::string client_certificate_public_key_file = {},
-            std::string client_certificate_private_key_file = {});
-        void disconnect();
+            std::string p12_keystore_file = {},
+            std::string p12_keystore_pass = {});
+    void disconnect();
 
 
 

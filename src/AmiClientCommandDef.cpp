@@ -1,5 +1,4 @@
 // AmiClientCommandDef.cpp
-#pragma once
 #include <AmiClientCpp/AmiClientCommandDef.hpp>
 #include <algorithm>
 
