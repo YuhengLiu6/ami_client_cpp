@@ -1,5 +1,4 @@
 ﻿// RawAmiClient.cpp
-#pragma once
 #include <AmiClientCpp/RawAmiClient.hpp>
 #include <AmiClientCpp/RawAmiClientListener.hpp>
 #include <AmiClientCpp/AmiTypes.hpp>
@@ -10,6 +9,7 @@
 #include <iostream>
 #include <chrono>
 #include <algorithm>
+#include <openssl/bio.h>
 #include <sstream>
 #include <cctype>
 #include <map>
@@ -25,14 +25,20 @@
 #include <boost/beast/core/detail/base64.hpp>
 #include <boost/bind/bind.hpp>
 #include <cppcodec/base64_rfc4648.hpp>
-
+#include <openssl/pkcs12.h>
+#include <openssl/err.h>
+#include <openssl/x509.h>
+#include <openssl/pem.h>
+#include <stdio.h>
 
 namespace ami {
-void TcpSocket::connect(const std::string & host, const std::string & port)
+
+bool TcpSocket::connect(const std::string & host, const std::string & port)
 {
     boost::asio::ip::tcp::resolver resolver(io_context_);
     auto endpoints = resolver.resolve(host, port);
     boost::asio::connect(socket_, endpoints);
+    return true;
 }
 
 void TcpSocket::disconnect()
@@ -63,6 +69,11 @@ char TcpSocket::read_char(boost::system::error_code & ec)
     return c;
 }
 
+SslSocket::~SslSocket()
+{
+    sk_X509_free(ca_);
+}
+
 SslSocket::SslSocket(
         boost::asio::io_context & io_context,
         std::string server_certificate_public_key_file,
@@ -88,8 +99,20 @@ SslSocket::SslSocket(
   }
 }
 
-void SslSocket::connect(const std::string & host, const std::string & port)
+SslSocket::SslSocket(
+        boost::asio::io_context & io_context,
+        std::string p12_keystore_file,
+        std::string p12_keystore_pass)
+    : super(io_context)
+    , ssl_context_(boost::asio::ssl::context::tlsv12_client)
+    , p12_keystore_file_(std::move(p12_keystore_file))
+    , p12_keystore_pass_(std::move(p12_keystore_pass))
 {
+}
+
+bool SslSocket::connect_using_pem_files(const std::string & host, const std::string & port)
+{
+    bool result = true;
     host_ = host; // keep for SSL verification
 
     if (!client_certificate_private_key_file_.empty()) {
@@ -113,7 +136,167 @@ void SslSocket::connect(const std::string & host, const std::string & port)
         std::cout << "ssl: handshake performed successfully" << std::endl;
     } catch (boost::system::system_error & e) {
         std::cerr << "error in ssl handshake: " << e.what() << std::endl;
+        result = false;
     }
+    return result;
+}
+
+namespace {
+
+struct BIOHelper
+{
+    ~BIOHelper()
+    {
+        BIO_free(bio_);
+    }
+
+    BIOHelper()
+    {
+        bio_ = BIO_new(BIO_s_mem());
+        if (!bio_) {
+            throw std::runtime_error("failed to create BIO");
+        }
+    }
+
+    boost::asio::const_buffer write_to_asio_buffer(X509 * cert)
+    {
+        if (!cert) {
+            return {};
+        }
+        write(cert);
+        return write_bio();
+    }
+
+    boost::asio::const_buffer write_to_asio_buffer(EVP_PKEY * pkey)
+    {
+        if (!pkey) {
+            return {};
+        }
+        write(pkey);
+        return write_bio();
+    }
+
+    boost::asio::const_buffer write_to_asio_buffer(STACK_OF(X509) * ca)
+    {
+        if (!ca || sk_X509_num(ca) == 0) {
+            return {};
+        }
+        for (int i = 0; i < sk_X509_num(ca); ++i) {
+            X509 * cert = sk_X509_value(ca, i);
+            write(cert);
+        }
+        return write_bio();
+    }
+
+private:
+    void write(X509 * cert)
+    {
+        if (!PEM_write_bio_X509(bio_, cert)) {
+            throw std::runtime_error("failed to write X509 certificate to BIO");
+        }
+    }
+
+    void write(EVP_PKEY * pkey) {
+        if (!PEM_write_bio_PrivateKey(bio_, pkey, nullptr, nullptr, 0, nullptr, nullptr)) {
+            throw std::runtime_error("failed to write private key to BIO");
+        }
+    }
+
+    boost::asio::const_buffer write_bio()
+    {
+        const auto sz = BIO_ctrl_pending(bio_);
+        if (sz <= 0) {
+            throw std::runtime_error("failed to get BIO size");
+        }
+        buf_ = std::move(std::vector<unsigned char>(sz));
+        BIO_read(bio_, buf_.data(), sz);
+        return {buf_.data(), buf_.size()};
+    }
+
+private:
+    BIO * bio_ = nullptr;
+    std::vector<unsigned char> buf_;
+};
+
+} // namespace
+
+bool SslSocket::connect_using_p12(const std::string & host, const std::string & port)
+{
+    bool result = true;
+    host_ = host; // kep for ssl verification
+
+    EVP_PKEY * pkey = nullptr;
+    X509 * cert = nullptr;
+    PKCS12 * p12 = nullptr;
+
+    try {
+        if (p12_keystore_file_.empty()) {
+            throw std::runtime_error("p12 keystore file name is empty");
+        }
+
+        FILE *fp = fopen(p12_keystore_file_.c_str(), "rb");
+        if (!fp) {
+            throw std::runtime_error("cannot open p12 keystore file");
+        }
+
+        p12 = d2i_PKCS12_fp(fp, nullptr);
+        fclose(fp);
+        if (!p12) {
+            ERR_print_errors_fp(stderr);
+            throw std::runtime_error("error loading PKCS#12 file");
+        }
+
+        // extract private key and certificates
+
+        if (!PKCS12_parse(p12, p12_keystore_pass_.c_str(), &pkey, &cert, &ca_)) {
+            ERR_print_errors_fp(stderr);
+            throw std::runtime_error("failed to parse PKCS#12 file");
+        }
+
+        BIOHelper pkey_bio;
+        auto pkey_asio_buffer = pkey_bio.write_to_asio_buffer(pkey);
+        if (pkey_asio_buffer.size() > 0) {
+            //std::cout << "******* Private Key:\n" << std::string_view((const char*)pkey_asio_buffer.data(), pkey_asio_buffer.size()) << std::endl;
+            ssl_context_.use_private_key(pkey_asio_buffer, boost::asio::ssl::context::file_format::pem);
+        }
+
+        BIOHelper cert_bio;
+        auto cert_asio_buffer = cert_bio.write_to_asio_buffer(cert);
+        if (cert_asio_buffer.size() > 0) {
+            //std::cout << "***** Certificate: \n" << std::string_view((const char *)cert_asio_buffer.data(), cert_asio_buffer.size()) << std::endl;
+            ssl_context_.use_certificate(cert_asio_buffer, boost::asio::ssl::context::pem);
+        }
+
+        BIOHelper ca_bio;
+        auto ca_asio_buffer = ca_bio.write_to_asio_buffer(ca_);
+        if (ca_asio_buffer.size() > 0) {
+            //std::cout << "********* certificate chain:\n" << std::string_view((const char *)ca_asio_buffer.data(), ca_asio_buffer.size()) << std::endl;
+            ssl_context_.use_certificate_chain(ca_asio_buffer);
+        }
+
+        ssl_context_.set_verify_mode(boost::asio::ssl::verify_peer);
+        ssl_context_.set_verify_callback(
+        boost::bind(&SslSocket::verify_certificate, this,
+                      boost::placeholders::_1, boost::placeholders::_2));
+
+        ssl_socket_ = std::make_unique<ssl_socket>(io_context_, ssl_context_);
+
+        boost::asio::ip::tcp::resolver resolver(io_context_);
+        auto endpoints = resolver.resolve(host, port);
+        boost::asio::connect(ssl_socket_->lowest_layer(), endpoints);
+        ssl_socket_->handshake(boost::asio::ssl::stream_base::client);
+    }
+    catch (const std::exception &e) {
+      std::cerr << "error setting up SSL context: " << e.what() << std::endl;
+      result = false;
+    }
+
+    // clean up
+    PKCS12_free(p12);
+    X509_free(cert);
+    EVP_PKEY_free(pkey);
+
+    return result;
 }
 
 void SslSocket::disconnect()
@@ -148,11 +331,46 @@ bool SslSocket::verify_certificate(
         const bool preverified,
         boost::asio::ssl::verify_context & ctx)
 {
+    if (preverified) {
+        return true;
+    }
+
     char subject_name[256];
-    X509 * cert = X509_STORE_CTX_get_current_cert(ctx.native_handle());
-    X509_NAME_oneline(X509_get_subject_name(cert), subject_name, 256);
+    X509 * server_native_cert = X509_STORE_CTX_get_current_cert(ctx.native_handle());
+    if (server_native_cert == nullptr) {
+        std::cerr << "failed to get incoming server certificate while verifying certificate" << std::endl;
+        return false;
+    }
+    X509_NAME_oneline(X509_get_subject_name(server_native_cert), subject_name, 256);
     std::cout << "Verifying certificate: " << subject_name << std::endl;
-    return preverified;
+
+    const EVP_PKEY * server_pubkey = X509_get_pubkey(server_native_cert);
+    if (!server_pubkey) {
+        std::cerr << "failed to get server pubkey from server native certificate" << std::endl;
+        return false;
+    }
+
+    SSL_CTX * native_ctx = ssl_context_.native_handle();
+    if (native_ctx == nullptr) {
+        std::cerr << "failed to get native ssl context from boost ssl context" << std::endl;
+        return false;
+    }
+
+    // loop over all certificates chain
+
+    for (int i = 0; i < sk_X509_num(ca_); ++i) {
+        X509 * next_cert = sk_X509_value(ca_, i);
+        if (next_cert) {
+            EVP_PKEY * next_pubkey = X509_get_pubkey(next_cert);
+            if (next_pubkey && EVP_PKEY_eq(server_pubkey, next_pubkey)) {
+                std::cout << "found certificate successfully in verifying" << std::endl;
+                return true;
+            }
+            std::cout << "pubkey " << i << " not matched" << std::endl;
+        }
+    }
+
+    return false;
 }
 
 using namespace std::chrono;
@@ -185,34 +403,31 @@ bool RawAmiClient::connect(
         const int port,
         const bool /*logErrorOnRetries*/,
         const bool autoFlush,
-        std::string server_certificate_public_key_file,
-        std::string client_certificate_public_key_file,
-        std::string client_certificate_private_key_file)
+        std::string p12_keystore_file,
+        std::string p12_keystore_pass)
 {
     if (connected_) throw std::runtime_error("Already connected");
     try {
-        const bool isSsl
-            = !server_certificate_public_key_file.empty()
-            || !client_certificate_public_key_file.empty()
-            || !client_certificate_private_key_file.empty();
+        const bool isSsl = !p12_keystore_file.empty() || !p12_keystore_pass.empty();
         if(!isSsl) {
             socket_ = std::make_unique<TcpSocket>(ioCtx_);
         }
         else {
             socket_ = std::make_unique<SslSocket>(
                     ioCtx_,
-                    server_certificate_public_key_file,
-                    client_certificate_public_key_file,
-                    client_certificate_private_key_file);
+                    p12_keystore_file,
+                    p12_keystore_pass);
         }
-        socket_->connect(host, std::to_string(port));
+        connected_ = socket_->connect(host, std::to_string(port));
+        if (!connected_) {
+            return false;
+        }
 
         {
             std::lock_guard lk(coutMutex);
             std::cout << "[connect] Connected to " << host << ":" << port << std::endl;
         }
 
-        connected_ = true;
         autoFlush_ = autoFlush;
         fireConnect();
 
