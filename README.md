@@ -6,13 +6,21 @@
 2. **Declare client instance and listener instance** to handle callbacks  
 3. **Set options:**
  `ENABLE_AUTO_PROCESS_INCOMING` | By default, this client will automatically read inbound messages and process them in a separate thread. If disabled, you must manually call `pumpIncomingEvent()`. 
+1. 
  `ENABLE_QUIET`                 | Same as setting `O="QUIET"`, which tells the AMI relay not to send message acks back to this client. 
+
  `DISABLE_AUTO_RECONNECT`      | By default, this client will keep trying to reconnect to the AMI server. See `setAutoReconnectFrequencyMs(long)` for details. 
+
  `ENABLE_SEND_TIMESTAMPS`      | Should this client send timestamps. Useful for enabling delayed message detection from the AMI client. 
+
  `ENABLE_SEND_SEQNUM`          | Should this client send sequence numbers. Useful for linking a particular client message to the message in AMI server. 
+
  `LOG_CONNECTION_RETRY_ERRORS` | Should this client log errors each time a connection retry fails. If not set, only logs on the first connection failure. 
+
  `LOG_MESSAGES`                | If set, all messages will be logged using the standard `java.util.logging.Logger` framework. 
+
  `ENABLE_AUTO_FLUSH_OUTGOING`  | If set, a separate thread is started which will automatically flush messages as they are written. 
+
   ```cpp
   int opts = AmiClient::ENABLE_AUTO_PROCESS_INCOMING
   | AmiClient::ENABLE_AUTO_FLUSH_OUTGOING
@@ -325,7 +333,7 @@ int main(int argc, char* argv[]) {
 }
 ```
 
-<!-- TestAmiClient: This file tests the end-to-end functionality of the AmiClient by connecting to a server, sending object messages and command definitions, and verifying message send/receive and callback handling.
-TestAutoFlush: This file tests the auto-flush functionality of AmiClient, including both buffer-size-based and time-interval-based auto-flushing modes by sending batched messages and verifying their flushing behavior.
-TestMsgType: This file tests the ability of AmiClient to send and receive various message types—including object creation, deletion, and command definition—and handle incoming commands via listener callbacks.
-TestMultiClient: This file tests multiple concurrent AmiClient instances, each with a unique login ID, by verifying their ability to independently connect, log in, send messages, and receive responses in parallel threads. -->
+##  UnitTest
+```cpp
+ami_client_cpp\test\UnitTest.cpp
+```
