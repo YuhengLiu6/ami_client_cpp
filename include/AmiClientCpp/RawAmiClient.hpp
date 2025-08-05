@@ -1,6 +1,8 @@
 ﻿// RawAmiClient.hpp
 #pragma once
 
+#include "spdlog/spdlog.h"
+
 #include <boost/asio.hpp>
 #include <boost/asio/ssl.hpp>
 #include <atomic>
@@ -27,8 +29,11 @@ namespace ami {
     public:
         virtual ~SocketBase() = default;
 
-        explicit SocketBase(boost::asio::io_context& io_context)
+        SocketBase(
+                boost::asio::io_context& io_context,
+                std::shared_ptr<spdlog::logger> logger)
             : io_context_(io_context)
+            , logger_(std::move(logger))
         {
         }
 
@@ -38,8 +43,14 @@ namespace ami {
         virtual std::size_t read_until(boost::asio::streambuf& buf, char delim) = 0;
         virtual char read_char(boost::system::error_code& ec) = 0;
 
+        void set_logger(std::shared_ptr<spdlog::logger> logger)
+        {
+            logger_ = std::move(logger);
+        }
+
     protected:
         boost::asio::io_context& io_context_;
+        std::shared_ptr<spdlog::logger> logger_;
     };
 
     class TcpSocket final : public SocketBase
@@ -47,8 +58,10 @@ namespace ami {
         using super = SocketBase;
 
     public:
-        explicit TcpSocket(boost::asio::io_context& io_context)
-            : super(io_context)
+        TcpSocket(
+                boost::asio::io_context& io_context,
+                std::shared_ptr<spdlog::logger> logger)
+            : super(io_context, logger)
             , socket_(io_context)
         {
         }
@@ -76,13 +89,14 @@ namespace ami {
             boost::asio::io_context& io_context,
             std::string server_certificate_public_key_file,
             std::string client_certificate_public_key_file,
-            std::string client_certificate_private_key_file
-        );
+            std::string client_certificate_private_key_file,
+            std::shared_ptr<spdlog::logger> logger);
 
     SslSocket(
             boost::asio::io_context & io_context,
             std::string p12_keystore_file,
-            std::string p12_keystore_pass);
+            std::string p12_keystore_pass,
+            std::shared_ptr<spdlog::logger> logger);
 
     bool connect(const std::string & host, const std::string & port) override
     {
@@ -117,7 +131,10 @@ public:
     static const std::string DEFAULT_HOST;
     static const int DEFAULT_PORT;
 
-    RawAmiClient() = default;
+    explicit RawAmiClient(std::shared_ptr<spdlog::logger> logger)
+        : logger_(std::move(logger))
+    {
+    }
 
     ~RawAmiClient();
 
@@ -177,6 +194,12 @@ public:
 
         bool pumpIncomingEvent();
         void setDebug(bool enable);
+
+        void set_logger(std::shared_ptr<spdlog::logger> logger)
+        {
+            logger_ = std::move(logger);
+            socket_->set_logger(logger_);
+        }
 
     protected:
         std::string processIncoming(const std::string& line);
@@ -256,6 +279,8 @@ public:
         std::string batchBuffer_;
 
         std::unique_ptr<SocketBase> socket_;
+
+        std::shared_ptr<spdlog::logger> logger_;
     };
 
 } // RAW_AMI_CLIENT_HPP

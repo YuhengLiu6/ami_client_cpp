@@ -1,5 +1,7 @@
 ﻿// test/UnitTest.cpp
 
+#include "spdlog/sinks/stdout_color_sinks.h"
+
 #include <gtest/gtest.h>
 #include <AmiClientCpp/RawAmiClient.hpp>
 #include <nlohmann/json.hpp>
@@ -45,6 +47,11 @@ namespace ami {
 
     class TestableRawAmiClient : public RawAmiClient {
     public:
+        TestableRawAmiClient()
+            : RawAmiClient(spdlog::stdout_color_mt("console"))
+        {
+        }
+
         using RawAmiClient::processIncoming;
         using RawAmiClient::parseIncomingParams;
         using RawAmiClient::readUntilSkipEscaped;
