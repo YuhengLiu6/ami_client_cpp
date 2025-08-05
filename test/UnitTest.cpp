@@ -153,7 +153,7 @@ protected:
 
 TEST_F(RawAmiClientConnectTest, SeqNumIncrement) {
     ami::TestableRawAmiClient c;
-    ASSERT_TRUE(c.connect(TEST_HOST, TEST_PORT, false, false, "", "", ""))
+    ASSERT_TRUE(c.connect(TEST_HOST, TEST_PORT, false, false, {}, {}))
         << "connect() failed";
     ASSERT_TRUE(c.pumpIncomingEvent()) << "no welcome message";
 
@@ -168,7 +168,7 @@ TEST_F(RawAmiClientConnectTest, SeqNumIncrement) {
 
 TEST_F(RawAmiClientConnectTest, IncludeNow) {
     ami::TestableRawAmiClient c;
-    ASSERT_TRUE(c.connect(TEST_HOST, TEST_PORT, false, false, "", "", ""));
+    ASSERT_TRUE(c.connect(TEST_HOST, TEST_PORT, false, false, {}, {}));
     ASSERT_TRUE(c.pumpIncomingEvent());
 
     c.resetSeqNum(0);
@@ -180,7 +180,7 @@ TEST_F(RawAmiClientConnectTest, IncludeNow) {
 
 TEST_F(RawAmiClientConnectTest, BuildMessageWithConnection) {
     ami::TestableRawAmiClient c;
-    ASSERT_TRUE(c.connect(TEST_HOST, TEST_PORT, false, false, "", "", ""));
+    ASSERT_TRUE(c.connect(TEST_HOST, TEST_PORT, false, false, {}, {}));
     ASSERT_TRUE(c.pumpIncomingEvent());
 
     c.resetMessage();

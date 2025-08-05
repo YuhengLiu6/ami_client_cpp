@@ -4,6 +4,8 @@ project(AmiClientCpp VERSION 1.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+set(THIRDPARTY_INCLUDE_DIRS "${CMAKE_SOURCE_DIR}/thirdparty/usr/local/include")
+
 # vcpkg toolchain
 #set(CMAKE_TOOLCHAIN_FILE "C:/Users/YuhengLiu/vcpkg/scripts/buildsystems/vcpkg.cmake" CACHE STRING "")
 
@@ -15,6 +17,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
     message(STATUS "Target system is Windows")
     set(ASIO "asio")
     set(LIB_BOOST_ASIO "Boost::asio")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    message(STATUS "Target system is Linux")
 else()
     message(FATAL_ERROR "Unsupported OS")
 endif()
@@ -32,6 +36,7 @@ target_include_directories(AmiClientCpp
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
         $<INSTALL_INTERFACE:include>
         ${Boost_INCLUDE_DIRS}
+        ${THIRDPARTY_INCLUDE_DIRS}
 )
 
 target_link_libraries(AmiClientCpp
