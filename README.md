@@ -5,8 +5,9 @@
 1. **Specify different login ID for each client**  
 2. **Declare client instance and listener instance** to handle callbacks  
 3. **Set options:**
+
  `ENABLE_AUTO_PROCESS_INCOMING` | By default, this client will automatically read inbound messages and process them in a separate thread. If disabled, you must manually call `pumpIncomingEvent()`. 
-1. 
+
  `ENABLE_QUIET`                 | Same as setting `O="QUIET"`, which tells the AMI relay not to send message acks back to this client. 
 
  `DISABLE_AUTO_RECONNECT`      | By default, this client will keep trying to reconnect to the AMI server. See `setAutoReconnectFrequencyMs(long)` for details. 
