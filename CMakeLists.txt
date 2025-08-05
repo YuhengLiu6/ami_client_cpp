@@ -5,7 +5,11 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # vcpkg toolchain
-set(CMAKE_TOOLCHAIN_FILE "C:/Users/YuhengLiu/vcpkg/scripts/buildsystems/vcpkg.cmake" CACHE STRING "")
+#set(CMAKE_TOOLCHAIN_FILE "C:/Users/YuhengLiu/vcpkg/scripts/buildsystems/vcpkg.cmake" CACHE STRING "")
+
+if(NOT DEFINED CMAKE_TOOLCHAIN_FILE)
+    message(WARNING "CMAKE_TOOLCHAIN_FILE not set. If using vcpkg, please specify it manually via -DCMAKE_TOOLCHAIN_FILE=...")
+endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
     message(STATUS "Target system is Windows")
@@ -52,8 +56,12 @@ option(AMICLIENTCPP_BUILD_TESTS "Build test executable" ON)
 if(AMICLIENTCPP_BUILD_TESTS)
     find_package(GTest REQUIRED)
     enable_testing()
-
+    #file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS "test/TestAutoFlush.cpp")
+    #file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS "test/TestAmiClient.cpp")
+    #file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS "test/TestMsgType.cpp")
+    #file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS "test/TestMultiClient.cpp")
     file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS "test/UnitTest.cpp")
+
     add_executable(AmiClientCppTests ${TEST_SOURCES})
 
     target_link_libraries(AmiClientCppTests
