@@ -88,10 +88,19 @@ int main(int argc, char* argv[]) {
     if (argc > 2) port = std::stoi(argv[2]);
     if (argc > 3) loginId = argv[3];
 
-    std::string server_certificate_public_key_file = (argc > 4) ? argv[4] : "";
-    std::string client_certificate_public_key_file = (argc > 5) ? argv[5] : "";
-    std::string client_certificate_private_key_file = (argc > 6) ? argv[6] : "";
-
+    std::string p12_keystore_file;
+    std::string p12_keystore_pass;
+    if (argc > 4) {
+        std::cout << "Using SSL connection" << std::endl;
+        p12_keystore_file = argv[4];
+        if (argc > 5) {
+            p12_keystore_pass = argv[5];
+        }
+        if (p12_keystore_file.empty() || p12_keystore_pass.empty()) {
+            std::cerr << "for SSL connection both p12_keystore_file and p12_keystore_password must be supplied" << std::endl;
+            return 1;
+        }
+    }
 
     auto client = AmiClient::create();
     auto listener = std::make_shared<MyAmiListener>();
@@ -114,9 +123,8 @@ int main(int argc, char* argv[]) {
                 port,
                 loginId,
                 opts,
-                server_certificate_public_key_file,
-                client_certificate_public_key_file,
-                client_certificate_private_key_file)) {
+                p12_keystore_file,
+                p12_keystore_pass)) {
         std::cerr << "[Main] Failed to start AmiClient." << std::endl;
         return 1;
     }

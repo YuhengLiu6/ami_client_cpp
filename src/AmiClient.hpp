@@ -48,9 +48,8 @@ public:
             int port,
             const std::string& loginId,
             int options,
-            std::string server_certificate_public_key_file = {},
-            std::string client_certificate_public_key_file = {},
-            std::string client_certificate_private_key_file = {});
+            std::string p12_keystore_file = {},
+            std::string p12_keystore_pass = {});
 
     void close();
 

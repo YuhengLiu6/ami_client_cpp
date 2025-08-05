@@ -13,9 +13,8 @@ bool AmiClient::start(
         int port,
         const std::string& loginId,
         int options,
-        std::string server_certificate_public_key_file,
-        std::string client_certificate_public_key_file,
-        std::string client_certificate_private_key_file)
+        std::string p12_keystore_file,
+        std::string p12_keystore_pass)
 {
     host_ = host;
     port_ = port;
@@ -29,9 +28,8 @@ bool AmiClient::start(
             port_,
             logConnectionRetryErrors_,
             autoFlush,
-            server_certificate_public_key_file,
-            client_certificate_public_key_file,
-            client_certificate_private_key_file)) {
+            p12_keystore_file,
+            p12_keystore_pass)) {
         return false;
     }
     sendLogin_();
