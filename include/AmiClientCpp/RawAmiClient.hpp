@@ -178,6 +178,13 @@ public:
         bool pumpIncomingEvent();
         void setDebug(bool enable);
 
+    protected:
+        std::string processIncoming(const std::string& line);
+        long resetSeqNum(long seqnum);
+        void parseIncomingParams(const std::string& str, size_t pos, std::map<std::string, AmiValue>& out);
+        bool readUntilSkipEscaped(const std::string& input, size_t& pos, char endChar, std::string& out);
+        void resetMessage();
+        std::atomic<bool> connected_{ false };
     private:
         void fireConnect();
         void fireDisconnect();
@@ -191,13 +198,13 @@ public:
             const std::string& objectId,
             const std::map<std::string, AmiValue>& params);
 
-        void parseIncomingParams(const std::string& str, size_t pos, std::map<std::string, AmiValue>& out);
-        bool readUntilSkipEscaped(const std::string& input, size_t& pos, char endChar, std::string& out);
+        //void parseIncomingParams(const std::string& str, size_t pos, std::map<std::string, AmiValue>& out);
+        //bool readUntilSkipEscaped(const std::string& input, size_t& pos, char endChar, std::string& out);
 
-        std::string processIncoming(const std::string& line);
+        //std::string processIncoming(const std::string& line);
+        //long resetSeqNum(long seqnum);
 
-        long resetSeqNum(long seqnum);
-
+        //void resetMessage();
         void startReader();
 
         template<typename F, typename... Args>
@@ -205,7 +212,7 @@ public:
 
         void assertConnected() const;
         void assertInMessage() const;
-        void resetMessage();
+        
 
         std::string inBuffer_;
         std::atomic<bool> isInReceive_{ false };
@@ -216,7 +223,7 @@ public:
         std::mutex seqnumMutex_;
         boost::asio::io_context ioCtx_;
         std::thread readerThread_;
-        std::atomic<bool> connected_{ false };
+        /*std::atomic<bool> connected_{ false };*/
         std::atomic<bool> receiving_{ false };
         std::atomic<bool> sending_{ false };
         std::atomic<bool> loggedIn_{ false };

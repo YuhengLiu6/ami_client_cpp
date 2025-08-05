@@ -9,7 +9,6 @@ set(THIRDPARTY_INCLUDE_DIRS "${CMAKE_SOURCE_DIR}/thirdparty/usr/local/include")
 # vcpkg toolchain
 set(CMAKE_TOOLCHAIN_FILE "C:/Users/YuhengLiu/vcpkg/scripts/buildsystems/vcpkg.cmake" CACHE STRING "")
 
-
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
     message(STATUS "Target system is Windows")
     set(ASIO "asio")
@@ -20,12 +19,11 @@ else()
     message(FATAL_ERROR "Unsupported OS")
 endif()
 
-
 find_package(Boost REQUIRED CONFIG COMPONENTS ${ASIO} system)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(OpenSSL REQUIRED)
 
-
+# ─── Library ────────────────────────────────────────────────────────────────────
 file(GLOB_RECURSE LIB_SOURCES CONFIGURE_DEPENDS "src/*.cpp")
 add_library(AmiClientCpp STATIC ${LIB_SOURCES})
 
@@ -50,18 +48,30 @@ if(WIN32)
     target_link_libraries(AmiClientCpp PUBLIC ws2_32 wsock32)
 endif()
 
-# ======= test =======
-option(AMICLIENTCPP_BUILD_TESTS "Build test executable" ON)
-if(AMICLIENTCPP_BUILD_TESTS)
-    #file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS "test/TestAutoFlush.cpp")
-    #file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS "test/TestAmiClient.cpp")
-    file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS "test/TestMsgType.cpp")
-    #file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS "test/TestMultiClient.cpp")
-    add_executable(test ${TEST_SOURCES})
-    target_link_libraries(test PRIVATE AmiClientCpp)
-    target_include_directories(test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-endif()
-
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(AmiClientCpp PRIVATE -Wall -Wextra -O2)
+endif()
+
+# ─── Tests ──────────────────────────────────────────────────────────────────────
+option(AMICLIENTCPP_BUILD_TESTS "Build test executable" ON)
+if(AMICLIENTCPP_BUILD_TESTS)
+    find_package(GTest REQUIRED)
+    enable_testing()
+
+    file(GLOB_RECURSE TEST_SOURCES CONFIGURE_DEPENDS "test/UnitTest.cpp")
+    add_executable(AmiClientCppTests ${TEST_SOURCES})
+
+    target_link_libraries(AmiClientCppTests
+        PRIVATE
+            AmiClientCpp
+            GTest::gtest_main
+    )
+
+    target_include_directories(AmiClientCppTests
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
+
+    include(GoogleTest)
+    gtest_discover_tests(AmiClientCppTests)
 endif()
