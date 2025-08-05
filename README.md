@@ -18,7 +18,7 @@
 
  `LOG_CONNECTION_RETRY_ERRORS` | Should this client log errors each time a connection retry fails. If not set, only logs on the first connection failure. 
 
- `LOG_MESSAGES`                | If set, all messages will be logged using the standard `java.util.logging.Logger` framework. 
+ `LOG_MESSAGES`                | If set, more detailed message will be printed for debug. 
 
  `ENABLE_AUTO_FLUSH_OUTGOING`  | If set, a separate thread is started which will automatically flush messages as they are written. 
 
@@ -35,6 +35,17 @@
 ```
 
 4. **Keep main thread alive**
+
+## Configure SSL for the C++ AMI Client
+Instruction to get SSL file for the C++ AMI Client is now simple:
+Get the existing and configured Java *.jks keystore file. This is already described how to get such file in the AMI documentation.
+
+Convert it to the C++ *.p12 keystore file using the Java keytool like :
+```bash
+$ keytool -importkeystore -srckeystore <keystore.jks> -destkeystore <keystore.p12> -deststoretype PKCS12
+```
+And use the resulting <keystore.p12>  file for the C++ AMI client directly
+
 
 ##  Listener Callbacks
 
