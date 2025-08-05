@@ -384,7 +384,7 @@ void RawAmiClient::parseIncomingParams(
                 }
                 else if (!raw.empty() && raw.back() == 'L') {
                     raw.pop_back();
-                    val = std::stoll(raw);
+                    val = std::stol(raw);
                 }
                 else {
                     val = std::stoi(raw);
@@ -513,7 +513,11 @@ std::string RawAmiClient::processIncoming(const std::string& line) {
         }
     }
     catch (const std::exception& ex) {
-        return std::string("Exception during parse: ") + ex.what();
+        std::string msg = ex.what();
+        if (msg.find("Expecting Q") != std::string::npos) {
+            return "Missing | after timestamp";  
+        }
+        return std::string("Exception during parse: ") + msg;
     }
 
     return {}; 
