@@ -18,7 +18,7 @@
 
  `LOG_CONNECTION_RETRY_ERRORS` | Should this client log errors each time a connection retry fails. If not set, only logs on the first connection failure. 
 
- `LOG_MESSAGES`                | If set, more detailed message will be printed for debug. 
+ `LOG_MESSAGES`                | If set, more detailed message will be printed for debug. spdlog library has to be included and set `spdlog::set_level(spdlog::level::debug);`
 
  `ENABLE_AUTO_FLUSH_OUTGOING`  | If set, a separate thread is started which will automatically flush messages as they are written. 
 
