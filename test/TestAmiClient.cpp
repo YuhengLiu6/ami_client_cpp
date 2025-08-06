@@ -9,21 +9,20 @@
 #include <chrono>
 #include <mutex>
 #include <iomanip>
-
+#include <spdlog/spdlog.h>
 namespace ami {
 
-    extern std::mutex coutMutex;
 
     class MyAmiListener : public AmiClientListener {
     public:
         void onConnect(AmiClient* client) override {
-            std::lock_guard<std::mutex> lk(coutMutex);
+
             std::cout << "[Listener] Connected to server." << std::endl;
         }
 
         void onLoggedIn(AmiClient* client) override {
             {
-                std::lock_guard<std::mutex> lk(coutMutex);
+
                 std::cout << "[Listener] Logged in successfully." << std::endl;
             }
 
@@ -49,7 +48,7 @@ namespace ami {
         }
 
         void onDisconnect(AmiClient* client) override {
-            std::lock_guard<std::mutex> lk(coutMutex);
+
             std::cout << "[Listener] Disconnected from server." << std::endl;
         }
 
@@ -58,7 +57,7 @@ namespace ami {
             long seqNum,
             int status,
             const std::string& message) override {
-            std::lock_guard<std::mutex> lk(coutMutex);
+
             std::cout << "[Listener] MessageReceived: seq=" << seqNum
                 << " status=" << status
                 << " msg=\"" << message << "\"" << std::endl;
@@ -66,7 +65,7 @@ namespace ami {
 
         void onMessageSent(AmiClient* client,
             const std::string& message) override {
-            std::lock_guard<std::mutex> lk(coutMutex);
+
             std::cout << "[Listener] MessageSent: " << message << std::endl;
         }
 
@@ -77,7 +76,7 @@ namespace ami {
             const std::string& objectType,
             const std::string& objectId,
             const std::map<std::string, AmiValue>& params) override {
-            std::lock_guard<std::mutex> lk(coutMutex);
+    
             std::cout << "[Listener] Command received." << std::endl;
 
             source->startResponseMessage(requestId, 0, "Processed")
@@ -90,7 +89,7 @@ namespace ami {
 
 int main(int argc, char* argv[]) {
     using namespace ami;
-
+    spdlog::set_level(spdlog::level::debug);
     std::string host = AmiClient::DEFAULT_HOST;
     int port = AmiClient::DEFAULT_PORT;
     std::string loginId = "demo";
@@ -103,11 +102,9 @@ int main(int argc, char* argv[]) {
     auto listener = std::make_shared<MyAmiListener>();
     client->addListener(listener);
 
-    {
-        std::lock_guard<std::mutex> lk(coutMutex);
-        std::cout << "[Main] Starting AmiClient to " << host << ":" << port
+    std::cout << "[Main] Starting AmiClient to " << host << ":" << port
             << " with loginId=\"" << loginId << "\"..." << std::endl;
-    }
+    
 
     int opts = AmiClient::ENABLE_AUTO_PROCESS_INCOMING;
 

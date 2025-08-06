@@ -30,6 +30,7 @@
 #include <openssl/x509.h>
 #include <openssl/pem.h>
 #include <stdio.h>
+#include <spdlog/spdlog.h>   
 
 namespace ami {
 
@@ -133,9 +134,9 @@ bool SslSocket::connect_using_pem_files(const std::string & host, const std::str
     boost::asio::connect(ssl_socket_->lowest_layer(), endpoints);
     try {
         ssl_socket_->handshake(boost::asio::ssl::stream_base::client);
-        std::cout << "ssl: handshake performed successfully" << std::endl;
+        spdlog::info("ssl: handshake performed successfully");
     } catch (boost::system::system_error & e) {
-        std::cerr << "error in ssl handshake: " << e.what() << std::endl;
+        spdlog::error("error in ssl handshake: {}", e.what());
         result = false;
     }
     return result;
@@ -338,21 +339,21 @@ bool SslSocket::verify_certificate(
     char subject_name[256];
     X509 * server_native_cert = X509_STORE_CTX_get_current_cert(ctx.native_handle());
     if (server_native_cert == nullptr) {
-        std::cerr << "failed to get incoming server certificate while verifying certificate" << std::endl;
+        spdlog::error("failed to get incoming server certificate while verifying certificate");
         return false;
     }
     X509_NAME_oneline(X509_get_subject_name(server_native_cert), subject_name, 256);
-    std::cout << "Verifying certificate: " << subject_name << std::endl;
+    spdlog::debug("Verifying certificate: {}", subject_name);
 
     const EVP_PKEY * server_pubkey = X509_get_pubkey(server_native_cert);
     if (!server_pubkey) {
-        std::cerr << "failed to get server pubkey from server native certificate" << std::endl;
+        spdlog::error("failed to get server pubkey from server native certificate");
         return false;
     }
 
     SSL_CTX * native_ctx = ssl_context_.native_handle();
     if (native_ctx == nullptr) {
-        std::cerr << "failed to get native ssl context from boost ssl context" << std::endl;
+        spdlog::error("failed to get native ssl context from boost ssl context");
         return false;
     }
 
@@ -363,10 +364,10 @@ bool SslSocket::verify_certificate(
         if (next_cert) {
             EVP_PKEY * next_pubkey = X509_get_pubkey(next_cert);
             if (next_pubkey && EVP_PKEY_eq(server_pubkey, next_pubkey)) {
-                std::cout << "found certificate successfully in verifying" << std::endl;
+                spdlog::info("found certificate successfully in verifying");
                 return true;
             }
-            std::cout << "pubkey " << i << " not matched" << std::endl;
+            spdlog::error("pubkey {} not matched", i);
         }
     }
 
@@ -423,10 +424,7 @@ bool RawAmiClient::connect(
             return false;
         }
 
-        {
-            std::lock_guard lk(coutMutex);
-            std::cout << "[connect] Connected to " << host << ":" << port << std::endl;
-        }
+        spdlog::info("[connect] Connected to {}:{}", host, port);
 
         autoFlush_ = autoFlush;
         fireConnect();
@@ -439,8 +437,7 @@ bool RawAmiClient::connect(
         return true;
     }
     catch (const std::exception& e) {
-        std::lock_guard lk(coutMutex);
-        std::cerr << "[connect error] " << e.what() << std::endl;
+        spdlog::error("[connect error] {}", e.what());
         return false;
     }
 }
@@ -449,10 +446,7 @@ bool RawAmiClient::connect(
 void RawAmiClient::disconnect() {
     if (!connected_) return;
 
-    {
-        std::lock_guard lk(coutMutex);
-        std::cout << "[disconnect] Shutting down..." << std::endl;
-    }
+    spdlog::info("[disconnect] Shutting down...");
 
     connected_ = false;
     stopAutoFlush_ = true;
@@ -466,10 +460,7 @@ void RawAmiClient::disconnect() {
     loggedIn_ = false;
     fireDisconnect();
 
-    {
-        std::lock_guard lk(coutMutex);
-        std::cout << "[disconnect] Done." << std::endl;
-    }
+    spdlog::info("[disconnect] Done.");
 }
 
 
@@ -506,17 +497,17 @@ void RawAmiClient::startReader() {
                     auto err = processIncoming(line);
 
                     if (debug_) {
-                        std::lock_guard lk(coutMutex);
-                        if (err.empty())
-                            std::cout << "[DEBUG-reader] OK: " << line << std::endl;
-                        else
-                            std::cerr << "[DEBUG-reader] WARN: " << err << "  line='" << line << "'" << std::endl;
+                        if (err.empty()) {
+                            spdlog::debug("[reader] OK: {}", line);
+                        }
+                        else {
+                            spdlog::debug("[reader] WARN: {}  line='{}'", err, line);
+                        }
                     }
                 }
             }
             catch (const std::exception& e) {
-                std::lock_guard lk(coutMutex);
-                std::cerr << "[reader] Exception: " << e.what() << std::endl;
+                spdlog::error("[reader] Exception: {}", e.what());
                 break;
             }
         }
@@ -628,7 +619,8 @@ std::string RawAmiClient::processIncoming(const std::string& line) {
     while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back()))) s.pop_back();
 
     if (debug_) {
-        std::cout << "[DEBUG-processIncoming] Incoming type: '" << s[0] << "' | Raw: " << s << std::endl;
+        spdlog::debug("[processIncoming] Incoming type: '{}' | Raw: {}", s[0], s);
+
     }
     if (s.size() < 3 || s[1] != '@') return "Invalid header";
 
@@ -677,7 +669,7 @@ std::string RawAmiClient::processIncoming(const std::string& line) {
             std::string msg;
             if (!readUntilSkipEscaped(s, pos, '"', msg)) {
                 if (debug_) {
-                    std::cout << "[DEBUG] readUntilSkipEscaped Failed! " << msg << std::endl;
+                    spdlog::debug("readUntilSkipEscaped Failed! {}", msg);
                 }
                 return "Malformed message string";
             }
@@ -713,7 +705,7 @@ std::string RawAmiClient::processIncoming(const std::string& line) {
 
 
             if (debug_) {
-                std::cout << "[Processing E Command]: try to fire ecommand" << std::endl;
+                spdlog::debug("[Processing E Command]: try to fire ecommand");
             }
             fireCommand(requestId, cmd, userName, type, objectId, params);
             break;
@@ -721,7 +713,7 @@ std::string RawAmiClient::processIncoming(const std::string& line) {
 
         default:
             if (debug_) {
-                std::cout << "[DEBUG] Unknown message type '" << s[0] << "', forwarding raw message.\n";
+                spdlog::debug("Unknown message type '{}', forwarding raw message.", s[0]);
             }
             fireMessageReceived(ts, 0, 0, s);
             break;
@@ -785,15 +777,13 @@ bool RawAmiClient::readUntilSkipEscaped(const std::string& input, size_t& pos, c
 
 bool RawAmiClient::pumpIncomingEvent() {
     if (debug_) {
-        std::lock_guard<std::mutex> lk(coutMutex);
-        std::cout << "[DEBUG-pumpEvent] start\n";
+        spdlog::debug("[pumpEvent] start");
     }
 
     bool expected = false;
     if (!isInReceive_.compare_exchange_strong(expected, true)) {
         if (debug_) {
-            std::lock_guard<std::mutex> lk(coutMutex);
-            std::cout << "[DEBUG-pumpEvent] Already in pump for receive\n";
+            spdlog::debug("[pumpEvent] Already in pump for receive");
         }
         throw std::runtime_error("Already in pump for receive");
     }
@@ -814,21 +804,18 @@ bool RawAmiClient::pumpIncomingEvent() {
             if (ec) {
                 if (ec == boost::asio::error::eof) {
                     if (!inBuffer_.empty()) {
-                        std::lock_guard<std::mutex> lk(coutMutex);
-                        std::cerr << "[warning] Trailing text: " << inBuffer_ << "\n";
+                        spdlog::warn("[pumpEvent] Trailing text: {}", inBuffer_);
                     }
                     if (debug_) {
-                        std::lock_guard<std::mutex> lk(coutMutex);
-                        std::cout << "[DEBUG-pumpEvent] EOF reached\n";
+                        spdlog::warn("[pumpEvent] Read error: {}", ec.message());
                     }
                     return false;
                 }
 
-                std::lock_guard<std::mutex> lk(coutMutex);
-                std::cerr << "[warning] Read error: " << ec.message() << "\n";
+                spdlog::warn("[pumpEvent] Read error: {}", ec.message());
 
                 if (debug_) {
-                    std::cerr << "[DEBUG-pumpEvent] Disconnecting due to read error\n";
+                    spdlog::debug("[DEBUG-pumpEvent] Disconnecting due to read error\n");
                 }
 
                 disconnect();
@@ -838,23 +825,19 @@ bool RawAmiClient::pumpIncomingEvent() {
             switch (c) {
             case '\n': {
                 if (debug_) {
-                    std::lock_guard<std::mutex> lk(coutMutex);
-                    std::cout << "[DEBUG-pumpEvent] Received newline, processing: " << inBuffer_ << "\n";
+                    spdlog::debug("[pumpEvent] Received newline, processing: {}", inBuffer_);
                 }
 
                 std::string err = processIncoming(inBuffer_);
                 if (!err.empty()) {
-                    std::lock_guard<std::mutex> lk(coutMutex);
-                    std::cerr << "[warning] General error: "
-                        << err << " for string '" << inBuffer_ << "'\n";
+                    spdlog::warn("[pumpEvent] parse error: {} for string='{}'", err, inBuffer_);
                 }
 
                 return true;
             }
             case '\r':
                 if (debug_) {
-                    std::lock_guard<std::mutex> lk(coutMutex);
-                    std::cout << "[DEBUG-pumpEvent] Ignoring carriage return\n";
+                    spdlog::debug("[DEBUG-pumpEvent] Ignoring carriage return\n");
                 }
                 continue;
             default:
@@ -863,24 +846,20 @@ bool RawAmiClient::pumpIncomingEvent() {
         }
 
         if (!inBuffer_.empty()) {
-            std::lock_guard<std::mutex> lk(coutMutex);
-            std::cerr << "[warning] Trailing text: " << inBuffer_ << "\n";
+            spdlog::warn("[pumpEvent] Trailing text at close: {}", inBuffer_);
         }
 
         if (debug_) {
-            std::lock_guard<std::mutex> lk(coutMutex);
-            std::cout << "[DEBUG-pumpEvent] Connection closed, exiting pump loop\n";
+            spdlog::debug("[DEBUG-pumpEvent] Connection closed, exiting pump loop\n");
         }
 
         return false;
     }
     catch (const std::exception& ex) {
-        std::lock_guard<std::mutex> lk(coutMutex);
-        std::cerr << "[warning] Exception in pumpIncomingEvent: "
-            << ex.what() << "\n";
+        spdlog::error("[pumpEvent] Exception: {}", ex.what());
 
         if (debug_) {
-            std::cerr << "[DEBUG-pumpEvent] Disconnecting due to exception\n";
+            spdlog::debug("[DEBUG-pumpEvent] Disconnecting due to exception\n");
         }
 
         disconnect();
@@ -900,8 +879,7 @@ bool RawAmiClient::sendMessage(const std::string& msg, bool flush) {
         if (outBuffer_.empty() || outBuffer_.back() != '\n')
             outBuffer_ += '\n';
         if (debug_) {
-            std::lock_guard lk(coutMutex);
-            std::cout << "[sendMessage] buffered: " << msg << std::endl;
+            spdlog::debug("[sendMessage] buffered: {}", msg);
         }
 
 
@@ -930,8 +908,7 @@ bool RawAmiClient::sendMessage(const std::string& msg, bool flush) {
     fireMessageSent(toWrite);
 
     if (debug_) {
-        std::lock_guard lk(coutMutex);
-        std::cout << "[sendMessage] flushed: " << msg << std::endl;
+        spdlog::debug("[sendMessage] flushed: {}", msg);
     }
     return true;
 }
@@ -958,16 +935,14 @@ RawAmiClient& RawAmiClient::sendMessage() {
     if (autoFlush_ && autoFlushBufferSizeThreshold_ > 0) {
         std::lock_guard<std::mutex> lk(writeMutex_);
         if (debug_) {
-            std::lock_guard lk(coutMutex);
-            std::cout << "[DEBUG-sendMessage] AutoFlush enabled - size threshold mode. "
-                << "batchBuffer_.size() = " << batchBuffer_.size()
-                << ", threshold = " << autoFlushBufferSizeThreshold_ << std::endl;
+            spdlog::debug("[sendMessage] AutoFlush enabled - size threshold mode. batchBuffer_.size() = {}, threshold = {}",
+                batchBuffer_.size(), autoFlushBufferSizeThreshold_);
         }
         if (batchBuffer_.size() >= autoFlushBufferSizeThreshold_) {
             socket_->send_message(batchBuffer_);
             if (debug_) {
-                std::lock_guard lk(coutMutex);
-                std::cout << "[DEBUG-sendMessage] Threshold met, flushing immediately. Message:\n" << batchBuffer_ << std::endl;
+                spdlog::debug("[sendMessage] Threshold met, flushing immediately. Message:\n{}", batchBuffer_);
+
             }
             fireMessageSent(batchBuffer_);
             batchBuffer_.clear();
@@ -976,9 +951,7 @@ RawAmiClient& RawAmiClient::sendMessage() {
     else if (autoFlush_) {
         // Auto flush (time-based): notify flush thread
         if (debug_) {
-            std::lock_guard lk(coutMutex);
-            std::cout << "[DEBUG-sendMessage] AutoFlush enabled - time-based mode. "
-                << "Marking needsFlush_ = true and notifying autoFlushLoop." << std::endl;
+            spdlog::debug("[sendMessage] AutoFlush enabled - time-based mode. Marking needsFlush_ = true and notifying autoFlushLoop.");
         }
         needsFlush_ = true;
         flushCv_.notify_one();
@@ -1045,8 +1018,7 @@ RawAmiClient& RawAmiClient::flush(bool clearAfterSend) {
         socket_->send_message(buf);
         fireMessageSent(buf);
         if (debug_) {
-            std::lock_guard lk(coutMutex);
-            std::cout << "[flush] wrote: " << buf << std::endl;
+            spdlog::info("[flush] wrote: {}", buf);
         }
         needsFlush_ = false;
     }
@@ -1165,6 +1137,7 @@ long RawAmiClient::resetSeqNum(long seqnum) {
 
  void RawAmiClient::setDebug(bool enable) {
      debug_ = enable;
+
  }
 
 //construct msg
@@ -1197,11 +1170,9 @@ RawAmiClient& RawAmiClient::startMessage(char type, bool includeSeqNum, bool inc
         outBuffer_ += "@" + std::to_string(getNow());
 
     if (debug_) {
-        std::cout << "[DEBUG-startMessage] type: " << type
-            << ", includeSeqNum: " << includeSeqNum
-            << ", includeNow: " << includeNow
-            << ", seqnum_: " << seqnum_ 
-            << ", timestamp: " << std::to_string(getNow()) << std::endl;
+        spdlog::debug("[startMessage] type: {}, includeSeqNum: {}, includeNow: {}, seqnum_: {}, timestamp: {}",
+            type, includeSeqNum, includeNow, seqnum_, std::to_string(getNow()));
+
     }
     return *this;
 }

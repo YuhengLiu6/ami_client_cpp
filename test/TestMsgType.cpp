@@ -8,9 +8,9 @@
 #include <chrono>
 #include <mutex>
 #include <iomanip>
-
+#include <spdlog/spdlog.h>
 namespace ami {
-    extern std::mutex coutMutex;
+    //extern std::mutex coutMutex;
 
     class MyAmiListener : public AmiClientListener {
     public:
@@ -85,7 +85,7 @@ namespace ami {
 
 int main(int argc, char* argv[]) {
     using namespace ami;
-
+    spdlog::set_level(spdlog::level::debug);
     std::string host = AmiClient::DEFAULT_HOST;
     int port = AmiClient::DEFAULT_PORT;
     std::string loginId = "demo";
@@ -113,7 +113,7 @@ int main(int argc, char* argv[]) {
     client->addListener(listener);
 
     {
-        std::lock_guard<std::mutex> lk(coutMutex);
+        //std::lock_guard<std::mutex> lk(coutMutex);
         std::cout << "[Main] Starting AmiClient to " << host << ":" << port
             << " with loginId=\"" << loginId << "\"..." << std::endl;
     }
@@ -121,7 +121,8 @@ int main(int argc, char* argv[]) {
     int opts = AmiClient::ENABLE_AUTO_PROCESS_INCOMING |
         AmiClient::ENABLE_AUTO_FLUSH_OUTGOING |
         AmiClient::ENABLE_SEND_SEQNUM |
-        AmiClient::ENABLE_SEND_TIMESTAMPS;
+        AmiClient::ENABLE_SEND_TIMESTAMPS |
+        AmiClient::LOG_MESSAGES;
 
     bool success = client->start(
         host,

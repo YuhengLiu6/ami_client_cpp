@@ -9,7 +9,7 @@
 #include <mutex>
 #include <iomanip>
 #include <vector>
-
+#include <spdlog/spdlog.h>
 namespace ami {
     extern std::mutex coutMutex;
 
@@ -75,7 +75,7 @@ namespace ami {
 
 int main(int argc, char* argv[]) {
     using namespace ami;
-
+    spdlog::set_level(spdlog::level::debug);
     std::string host = AmiClient::DEFAULT_HOST;
     int port = AmiClient::DEFAULT_PORT;
     std::string loginId = "demo";
