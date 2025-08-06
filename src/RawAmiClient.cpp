@@ -288,7 +288,7 @@ bool SslSocket::connect_using_p12(const std::string & host, const std::string & 
         ssl_socket_->handshake(boost::asio::ssl::stream_base::client);
     }
     catch (const std::exception &e) {
-      std::cerr << "error setting up SSL context: " << e.what() << std::endl;
+	  spdlog::error("error setting up SSL context: {}", e.what());
       result = false;
     }
 
