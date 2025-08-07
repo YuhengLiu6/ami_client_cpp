@@ -12,6 +12,9 @@
 #include <AmiClientCpp/AmiClientListener.hpp>
 #include <AmiClientCpp/AmiTypes.hpp>
 #include <AmiClientCpp/AmiClientCommandDef.hpp>
+
+#include "spdlog/spdlog.h"
+
 namespace ami {
 
     class AmiClient : public RawAmiClientListener, public std::enable_shared_from_this<AmiClient> {
@@ -55,6 +58,12 @@ namespace ami {
             std::string p12_keystore_pass = {});
 
         void close();
+
+        void set_logger(std::shared_ptr<spdlog::logger> logger)
+        {
+            logger_ = std::move(logger);
+            rawClient_.set_logger(logger_);
+        }
 
 
         AmiClient& startStatusMessage();
@@ -126,11 +135,13 @@ namespace ami {
             rawClient_.addListener(std::static_pointer_cast<RawAmiClientListener>(shared_from_this()));
         }
 
+
+        std::shared_ptr<spdlog::logger> logger_;
         RawAmiClient rawClient_;
         std::vector<std::shared_ptr<AmiClientListener>> listeners_;
         std::mutex listenerMutex_;
         std::string loginId_;
-        bool autoFlush_;
+        bool autoFlush_{false};
 
         void sendLogin_();
         void runnerLoop_();

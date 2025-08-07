@@ -1,10 +1,16 @@
 ﻿// AmiClient.cpp
+
+#include "spdlog/sinks/stdout_color_sinks.h"
+
 #include <AmiClientCpp/AmiClient.hpp>
 #include <algorithm>
 
 namespace ami {
+
     AmiClient::AmiClient()
-        : autoFlush_(false) {
+        : logger_(spdlog::stdout_color_mt("console"))
+        , rawClient_(logger_)
+    {
     }
 
     AmiClient::~AmiClient() { close(); }

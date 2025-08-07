@@ -3,6 +3,8 @@
 #include <AmiClientCpp/RawAmiClientListener.hpp>
 #include <AmiClientCpp/AmiTypes.hpp>
 
+#include "spdlog/spdlog.h"
+
 #include <boost/asio.hpp>
 #include <boost/asio/ssl/host_name_verification.hpp>
 #include <boost/asio/ssl/verify_mode.hpp>
@@ -79,8 +81,9 @@ SslSocket::SslSocket(
         boost::asio::io_context & io_context,
         std::string server_certificate_public_key_file,
         std::string client_certificate_public_key_file,
-        std::string client_certificate_private_key_file)
-    : super(io_context)
+        std::string client_certificate_private_key_file,
+        std::shared_ptr<spdlog::logger> logger)
+    : super(io_context, logger)
     , ssl_context_(boost::asio::ssl::context::tlsv12_client)
     , server_certificate_public_key_file_(std::move(server_certificate_public_key_file))
     , client_certificate_public_key_file_(std::move(client_certificate_public_key_file))
@@ -103,8 +106,9 @@ SslSocket::SslSocket(
 SslSocket::SslSocket(
         boost::asio::io_context & io_context,
         std::string p12_keystore_file,
-        std::string p12_keystore_pass)
-    : super(io_context)
+        std::string p12_keystore_pass,
+        std::shared_ptr<spdlog::logger> logger)
+    : super(io_context, logger)
     , ssl_context_(boost::asio::ssl::context::tlsv12_client)
     , p12_keystore_file_(std::move(p12_keystore_file))
     , p12_keystore_pass_(std::move(p12_keystore_pass))
@@ -134,7 +138,9 @@ bool SslSocket::connect_using_pem_files(const std::string & host, const std::str
     boost::asio::connect(ssl_socket_->lowest_layer(), endpoints);
     try {
         ssl_socket_->handshake(boost::asio::ssl::stream_base::client);
-        spdlog::info("ssl: handshake performed successfully");
+
+        logger_->info("ssl: handshake performed successfully");
+
     } catch (boost::system::system_error & e) {
         spdlog::error("error in ssl handshake: {}", e.what());
         result = false;
@@ -257,14 +263,14 @@ bool SslSocket::connect_using_p12(const std::string & host, const std::string & 
         BIOHelper pkey_bio;
         auto pkey_asio_buffer = pkey_bio.write_to_asio_buffer(pkey);
         if (pkey_asio_buffer.size() > 0) {
-            //std::cout << "******* Private Key:\n" << std::string_view((const char*)pkey_asio_buffer.data(), pkey_asio_buffer.size()) << std::endl;
+            logger_->debug("PrivateKey:\n{}", std::string_view(static_cast<const char *>(pkey_asio_buffer.data()), pkey_asio_buffer.size()));
             ssl_context_.use_private_key(pkey_asio_buffer, boost::asio::ssl::context::file_format::pem);
         }
 
         BIOHelper cert_bio;
         auto cert_asio_buffer = cert_bio.write_to_asio_buffer(cert);
         if (cert_asio_buffer.size() > 0) {
-            //std::cout << "***** Certificate: \n" << std::string_view((const char *)cert_asio_buffer.data(), cert_asio_buffer.size()) << std::endl;
+            logger_->debug("Certificate:\n{}", std::string_view(static_cast<const char *>(cert_asio_buffer.data()), cert_asio_buffer.size()));
             ssl_context_.use_certificate(cert_asio_buffer, boost::asio::ssl::context::pem);
         }
 
@@ -288,8 +294,9 @@ bool SslSocket::connect_using_p12(const std::string & host, const std::string & 
         ssl_socket_->handshake(boost::asio::ssl::stream_base::client);
     }
     catch (const std::exception &e) {
-	  spdlog::error("error setting up SSL context: {}", e.what());
-      result = false;
+        logger_->error("fail to set up SSL context: {}", e.what());
+        result = false;
+
     }
 
     // clean up
@@ -343,7 +350,9 @@ bool SslSocket::verify_certificate(
         return false;
     }
     X509_NAME_oneline(X509_get_subject_name(server_native_cert), subject_name, 256);
-    spdlog::debug("Verifying certificate: {}", subject_name);
+
+    logger_->info("Verifying certificate: {}", subject_name);
+
 
     const EVP_PKEY * server_pubkey = X509_get_pubkey(server_native_cert);
     if (!server_pubkey) {
@@ -411,13 +420,14 @@ bool RawAmiClient::connect(
     try {
         const bool isSsl = !p12_keystore_file.empty() || !p12_keystore_pass.empty();
         if(!isSsl) {
-            socket_ = std::make_unique<TcpSocket>(ioCtx_);
+            socket_ = std::make_unique<TcpSocket>(ioCtx_, logger_);
         }
         else {
             socket_ = std::make_unique<SslSocket>(
                     ioCtx_,
                     p12_keystore_file,
-                    p12_keystore_pass);
+                    p12_keystore_pass,
+                    logger_);
         }
         connected_ = socket_->connect(host, std::to_string(port));
         if (!connected_) {
