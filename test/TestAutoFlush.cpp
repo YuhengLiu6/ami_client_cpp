@@ -9,42 +9,35 @@
 #include <chrono>
 #include <mutex>
 #include <iomanip>
+#include <spdlog/spdlog.h>
 
 namespace ami {
-
-    extern std::mutex coutMutex;
 
     class AutoFlushTestListener : public AmiClientListener {
     public:
         void onConnect(AmiClient* client) override {
-            std::lock_guard<std::mutex> lk(coutMutex);
             std::cout << "[Listener] Connected to server." << std::endl;
         }
 
         void onLoggedIn(AmiClient* client) override {
-            {
-                std::lock_guard<std::mutex> lk(coutMutex);
                 std::cout << "[Listener] Logged in, starting auto-flush tests..." << std::endl;
-            }
+            
 
             // ------- 1) Buffer size threshold test -------
             size_t threshold = 100;
             client->setAutoFlushBufferSizeThreshold(threshold);
-            {
-                std::lock_guard<std::mutex> lk(coutMutex);
-                std::cout << "[Test] Buffer-size threshold = " << threshold << " bytes" << std::endl;
-            }
+            std::cout << "[Test] Buffer-size threshold = " << threshold << " bytes" << std::endl;
+            
 
             for (int i = 1; i <= 30; ++i) {
                 client->startObjectMessage("TestType", "bufMsg" + std::to_string(i))
                     .addMessageParamString("data", std::string(30, 'X'))
                     .sendMessage();  // buffered
 
-                {
-                    std::lock_guard<std::mutex> lk(coutMutex);
-                    std::cout << "[Test] Buffered message " << i
+
+                std::cout << "[Test] Buffered message " << i
                         << ", buffer size now ~(" << (i * 30 + 20) << ") bytes" << std::endl;
-                }
+                
 
                 std::this_thread::sleep_for(std::chrono::milliseconds(50));
             }
@@ -56,37 +49,31 @@ namespace ami {
             long intervalMs = 5000;
             client->setAutoFlushBufferMillis(intervalMs);
 
-            {
-                std::lock_guard<std::mutex> lk(coutMutex);
                 std::cout << "[Test] Time-based auto-flush interval = " << intervalMs << " ms" << std::endl;
-            }
+            
 
             client->startObjectMessage("TestType", "timeMsg")
                 .addMessageParamString("payload", "time-test")
                 .sendMessage();
 
-            {
-                std::lock_guard<std::mutex> lk(coutMutex);
                 std::cout << "[Test] Buffered one message, waiting for timed flush..." << std::endl;
-            }
+            
 
             std::this_thread::sleep_for(std::chrono::milliseconds(intervalMs + 200));
 
-            {
-                std::lock_guard<std::mutex> lk(coutMutex);
                 std::cout << "[Test] Time-based auto-flush test completed." << std::endl;
-            }
+            
 
             client->close();
         }
 
         void onDisconnect(AmiClient* client) override {
-            std::lock_guard<std::mutex> lk(coutMutex);
+      
             std::cout << "[Listener] Disconnected." << std::endl;
         }
 
         void onMessageSent(AmiClient* client, const std::string& message) override {
-            std::lock_guard<std::mutex> lk(coutMutex);
+      
             std::cout << "[Listener] MessageSent: " << message;
         }
 
@@ -95,7 +82,7 @@ namespace ami {
             long seqNum,
             int status,
             const std::string& message) override {
-            std::lock_guard<std::mutex> lk(coutMutex);
+
             std::cout << "[Listener] MessageReceived: seq=" << seqNum
                 << " status=" << status
                 << " msg=\"" << message << "\"" << std::endl;
@@ -116,6 +103,7 @@ namespace ami {
 
 int main(int argc, char* argv[]) {
     using namespace ami;
+    spdlog::set_level(spdlog::level::debug);
 
     std::string host = AmiClient::DEFAULT_HOST;
     int port = AmiClient::DEFAULT_PORT;
@@ -129,16 +117,15 @@ int main(int argc, char* argv[]) {
     auto listener = std::make_shared<AutoFlushTestListener>();
     client->addListener(listener);
 
-    {
-        std::lock_guard<std::mutex> lk(coutMutex);
-        std::cout << "[Main] Starting AmiClient to " << host << ":" << port
+    std::cout << "[Main] Starting AmiClient to " << host << ":" << port
             << " with loginId=\"" << loginId << "\"..." << std::endl;
-    }
+    
 
     int opts = AmiClient::ENABLE_AUTO_PROCESS_INCOMING |
         AmiClient::ENABLE_AUTO_FLUSH_OUTGOING |
         AmiClient::ENABLE_SEND_TIMESTAMPS |
-        AmiClient::ENABLE_SEND_SEQNUM;
+        AmiClient::ENABLE_SEND_SEQNUM |
+        AmiClient::LOG_MESSAGES;
 
     if (!client->start(host, port, loginId, opts)) {
         std::cerr << "[Main] Failed to start AmiClient." << std::endl;
