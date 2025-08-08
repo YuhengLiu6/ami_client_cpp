@@ -347,5 +347,5 @@ int main(int argc, char* argv[]) {
 
 ##  UnitTest
 ```cpp
-ami_client_cpp\test\UnitTest.cpp
+ami_client_cpp\test\gtests\UnitTest.cpp
 ```

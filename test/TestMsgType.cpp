@@ -51,7 +51,7 @@ namespace ami {
         }
 
         void onMessageReceived(AmiClient* /*client*/,
-            long ts,
+            long long ts,
             long seq,
             int status,
             const std::string& message) override {
@@ -80,7 +80,7 @@ namespace ami {
         }
     };
 
-    
+
 }
 
 int main(int argc, char* argv[]) {
@@ -121,8 +121,7 @@ int main(int argc, char* argv[]) {
     int opts = AmiClient::ENABLE_AUTO_PROCESS_INCOMING |
         AmiClient::ENABLE_AUTO_FLUSH_OUTGOING |
         AmiClient::ENABLE_SEND_SEQNUM |
-        AmiClient::ENABLE_SEND_TIMESTAMPS |
-        AmiClient::LOG_MESSAGES;
+        AmiClient::ENABLE_SEND_TIMESTAMPS;
 
     bool success = client->start(
         host,

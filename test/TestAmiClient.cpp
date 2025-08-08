@@ -53,7 +53,7 @@ namespace ami {
         }
 
         void onMessageReceived(AmiClient* client,
-            long timestamp,
+            long long timestamp,
             long seqNum,
             int status,
             const std::string& message) override {
@@ -76,7 +76,7 @@ namespace ami {
             const std::string& objectType,
             const std::string& objectId,
             const std::map<std::string, AmiValue>& params) override {
-    
+
             std::cout << "[Listener] Command received." << std::endl;
 
             source->startResponseMessage(requestId, 0, "Processed")
@@ -103,12 +103,12 @@ int main(int argc, char* argv[]) {
     client->addListener(listener);
 
     std::cout << "[Main] Starting AmiClient to " << host << ":" << port
-            << " with loginId=\"" << loginId << "\"..." << std::endl;
-    
+        << " with loginId=\"" << loginId << "\"..." << std::endl;
+
 
     int opts = AmiClient::ENABLE_AUTO_PROCESS_INCOMING;
 
-    if (!client->start(host, port, loginId, opts)) {
+    if (!client->start(host, port, loginId, opts, {}, {})) {
         std::cerr << "[Main] Failed to start AmiClient." << std::endl;
         return 1;
     }

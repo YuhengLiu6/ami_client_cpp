@@ -43,7 +43,7 @@ namespace ami {
         }
 
         void onMessageReceived(AmiClient* client,
-            long  timestamp,
+            long long  timestamp,
             long  seqNum,
             int status,
             const std::string& message) override {

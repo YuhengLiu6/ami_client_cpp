@@ -20,14 +20,14 @@ namespace ami {
         }
 
         void onLoggedIn(AmiClient* client) override {
-                std::cout << "[Listener] Logged in, starting auto-flush tests..." << std::endl;
-            
+            std::cout << "[Listener] Logged in, starting auto-flush tests..." << std::endl;
+
 
             // ------- 1) Buffer size threshold test -------
             size_t threshold = 100;
             client->setAutoFlushBufferSizeThreshold(threshold);
             std::cout << "[Test] Buffer-size threshold = " << threshold << " bytes" << std::endl;
-            
+
 
             for (int i = 1; i <= 30; ++i) {
                 client->startObjectMessage("TestType", "bufMsg" + std::to_string(i))
@@ -36,8 +36,8 @@ namespace ami {
 
 
                 std::cout << "[Test] Buffered message " << i
-                        << ", buffer size now ~(" << (i * 30 + 20) << ") bytes" << std::endl;
-                
+                    << ", buffer size now ~(" << (i * 30 + 20) << ") bytes" << std::endl;
+
 
                 std::this_thread::sleep_for(std::chrono::milliseconds(50));
             }
@@ -49,36 +49,36 @@ namespace ami {
             long intervalMs = 5000;
             client->setAutoFlushBufferMillis(intervalMs);
 
-                std::cout << "[Test] Time-based auto-flush interval = " << intervalMs << " ms" << std::endl;
-            
+            std::cout << "[Test] Time-based auto-flush interval = " << intervalMs << " ms" << std::endl;
+
 
             client->startObjectMessage("TestType", "timeMsg")
                 .addMessageParamString("payload", "time-test")
                 .sendMessage();
 
-                std::cout << "[Test] Buffered one message, waiting for timed flush..." << std::endl;
-            
+            std::cout << "[Test] Buffered one message, waiting for timed flush..." << std::endl;
+
 
             std::this_thread::sleep_for(std::chrono::milliseconds(intervalMs + 200));
 
-                std::cout << "[Test] Time-based auto-flush test completed." << std::endl;
-            
+            std::cout << "[Test] Time-based auto-flush test completed." << std::endl;
+
 
             client->close();
         }
 
         void onDisconnect(AmiClient* client) override {
-      
+
             std::cout << "[Listener] Disconnected." << std::endl;
         }
 
         void onMessageSent(AmiClient* client, const std::string& message) override {
-      
+
             std::cout << "[Listener] MessageSent: " << message;
         }
 
         void onMessageReceived(AmiClient* client,
-            long timestamp,
+            long long timestamp,
             long seqNum,
             int status,
             const std::string& message) override {
@@ -118,8 +118,8 @@ int main(int argc, char* argv[]) {
     client->addListener(listener);
 
     std::cout << "[Main] Starting AmiClient to " << host << ":" << port
-            << " with loginId=\"" << loginId << "\"..." << std::endl;
-    
+        << " with loginId=\"" << loginId << "\"..." << std::endl;
+
 
     int opts = AmiClient::ENABLE_AUTO_PROCESS_INCOMING |
         AmiClient::ENABLE_AUTO_FLUSH_OUTGOING |
@@ -127,7 +127,7 @@ int main(int argc, char* argv[]) {
         AmiClient::ENABLE_SEND_SEQNUM |
         AmiClient::LOG_MESSAGES;
 
-    if (!client->start(host, port, loginId, opts)) {
+    if (!client->start(host, port, loginId, opts, {}, {})) {
         std::cerr << "[Main] Failed to start AmiClient." << std::endl;
         return 1;
     }

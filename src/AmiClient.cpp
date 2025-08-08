@@ -1,16 +1,10 @@
 ﻿// AmiClient.cpp
-
-#include "spdlog/sinks/stdout_color_sinks.h"
-
 #include <AmiClientCpp/AmiClient.hpp>
 #include <algorithm>
 
 namespace ami {
-
     AmiClient::AmiClient()
-        : logger_(spdlog::stdout_color_mt("console"))
-        , rawClient_(logger_)
-    {
+        : autoFlush_(false) {
     }
 
     AmiClient::~AmiClient() { close(); }
@@ -122,7 +116,7 @@ namespace ami {
             if (!rawClient_.isConnected()) {
                 if (autoReconnect_) {
                     // try reconnect loop
-                    while (running_.load() && !rawClient_.connect(host_, port_, logConnectionRetryErrors_, autoflush_)) {
+                    while (running_.load() && !rawClient_.connect(host_, port_, logConnectionRetryErrors_, autoflush_, "", "")) {
                         std::this_thread::sleep_for(std::chrono::milliseconds(autoReconnectFrequencyMs_));
                     }
                     if (running_.load()) {
@@ -273,7 +267,7 @@ namespace ami {
         for (auto& l : tmp) l->onLoggedIn(this);
     }
     void AmiClient::onMessageReceived(RawAmiClient* /*src*/,
-        long ts,
+        long long ts,
         long seq,
         int status,
         const std::string& msg) {
